@@ -10,6 +10,76 @@ Context Inspector is a proposed local GUI that combines:
 Implementation code lives exclusively under `src/`. Project state and design
 records follow the filesystem-native work ledger indexed by [`PLAN.md`](PLAN.md).
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser[Browser on the host]
+        Terminal[Claude CLI terminal]
+        Viewer[Context diff, response, and usage viewer]
+    end
+
+    subgraph Application[Loopback Context Inspector application]
+        Server[Python ASGI server]
+        PTY[PTY session manager]
+        Deriver[Evidence-aware context projection]
+        Runner[MITM runner process]
+    end
+
+    subgraph Podman[Private Podman network]
+        Agent[Agent container<br/>real Claude CLI]
+        Proxy[mitmproxy sidecar<br/>live-capture addon]
+    end
+
+    subgraph LocalState[Local state]
+        Workspace[Selected workspace]
+        ClaudeState[Persistent Claude state<br/>.state/claude]
+        Events[Versioned live events<br/>events.jsonl]
+        Runtime[Private runtime material<br/>CA, ADC copy, logs, captures]
+    end
+
+    Vertex[Google Vertex AI<br/>Claude endpoint]
+    HostADC[Host Google ADC]
+
+    Terminal <-->|terminal WebSocket| Server
+    Viewer <-->|derived-context WebSocket| Server
+    Server --> PTY --> Runner
+    Runner -->|starts and owns| Agent
+    Runner -->|starts and owns| Proxy
+
+    Agent ==>|model HTTPS through configured proxy| Proxy
+    Proxy ==>|forwarded model HTTPS| Vertex
+    Vertex ==>|streaming model response| Proxy
+    Proxy ==>|proxied response| Agent
+
+    Proxy -.->|addon emits request, response, and lifecycle evidence| Events
+    Events -.->|tailed by flow and context projections| Deriver
+    Deriver -.-> Server
+    Proxy -.->|completed archives and diagnostics| Runtime
+
+    Workspace -->|read-write mount| Agent
+    ClaudeState -->|persistent user configuration and memory mount| Agent
+    Runtime -->|generated CA trust mount| Agent
+    HostADC -->|copied into private runtime state| Runtime
+    Runtime -->|read-only ADC mount| Agent
+
+    classDef ui fill:#e8f1ff,stroke:#3b6ea8,color:#17324d;
+    classDef service fill:#eef7ea,stroke:#4f7d3b,color:#24391b;
+    classDef container fill:#fff3df,stroke:#a66b19,color:#513508;
+    classDef storage fill:#f4efff,stroke:#7256a3,color:#302247;
+    classDef external fill:#fdecec,stroke:#a44f4f,color:#4d2020;
+    class Terminal,Viewer ui;
+    class Server,PTY,Deriver,Runner service;
+    class Agent,Proxy container;
+    class Workspace,ClaudeState,Events,Runtime,HostADC storage;
+    class Vertex external;
+```
+
+The terminal path remains the real Claude CLI: the browser does not call a
+model SDK. Independently, all model HTTPS crosses the proxy sidecar. Its addon
+records exact wire evidence and lifecycle events, which the server projects
+into the interpreted context view without replacing the raw capture.
+
 ## Run the current prototype
 
 From this directory:

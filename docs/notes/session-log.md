@@ -413,3 +413,13 @@ Next:
 - Retained exactly the three required Vertex assignments and excluded the
   executable Claude command.
 - Confirmed non-empty values, shell syntax, mode `0600`, and Git ignore status.
+
+## 2026-08-20 — README stack architecture
+
+- Added a Mermaid architecture diagram spanning the browser, loopback server,
+  PTY/runner, Podman agent and proxy containers, Vertex, and local state.
+- Distinguished terminal/control flow, bidirectional proxied model traffic, and
+  the independent observation/projection path.
+- Included workspace, persistent Claude state, live events, captures, proxy CA,
+  and ADC-copy relationships.
+- Added a focused README architecture regression test.
