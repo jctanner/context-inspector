@@ -83,3 +83,4 @@ requests and responses captured by the mitmproxy sidecar.
 - [Document stack architecture](docs/tasks/done/026-document-stack-architecture.md)
 - [Clarify container lifecycle diagram](docs/tasks/done/027-clarify-container-lifecycle-diagram.md)
 - [Clarify terminal data path](docs/tasks/done/028-clarify-terminal-data-path.md)
+- [Emphasize live block diffs](docs/tasks/done/029-emphasize-live-block-diffs.md)

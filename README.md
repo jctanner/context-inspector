@@ -4,8 +4,18 @@ Context Inspector is a proposed local GUI that combines:
 
 - an interactive browser terminal connected to the real Claude CLI running in
   the existing agent container; and
-- a live, evidence-aware view of the model API context observed by the existing
-  mitmproxy sidecar.
+- a live inspector that compares every captured model request with its
+  predecessor and shows the context block by block: what was **added**,
+  **removed**, **transformed**, and **retained**.
+
+As the interaction proceeds, each model call appears beside the Claude console
+with its request-context diff. When that call finishes, the same card gains its
+correlated model response and measured context usage. The unit is deliberately
+a model call rather than a user turn: Claude Code may issue additional calls
+for tools, title generation, subagents, or other harness work.
+
+The comparisons come from traffic observed independently by the mitmproxy
+sidecar; they are not reconstructed from the terminal transcript.
 
 Implementation code lives exclusively under `src/`. Project state and design
 records follow the filesystem-native work ledger indexed by [`PLAN.md`](PLAN.md).

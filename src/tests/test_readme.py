@@ -3,6 +3,17 @@ import unittest
 
 
 class ReadmeArchitectureTests(unittest.TestCase):
+    def test_introduction_leads_with_live_block_by_block_diffs(self) -> None:
+        readme = (Path(__file__).parents[2] / "README.md").read_text()
+        architecture = readme.index("## Architecture")
+        introduction = readme[:architecture]
+        self.assertIn("context block by block", introduction)
+        for change in ("**added**", "**removed**", "**transformed**", "**retained**"):
+            self.assertIn(change, introduction)
+        self.assertIn("correlated model response and measured context usage", introduction)
+        self.assertIn("model call rather than a user turn", introduction)
+        self.assertIn("not reconstructed from the terminal transcript", introduction)
+
     def test_architecture_diagram_covers_control_traffic_and_evidence_paths(self) -> None:
         readme = (Path(__file__).parents[2] / "README.md").read_text()
         self.assertIn("```mermaid\nflowchart LR", readme)

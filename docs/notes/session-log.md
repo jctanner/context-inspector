@@ -441,3 +441,13 @@ Next:
 - Expanded the README prose to explain that this full-duplex console path is
   independent of the proxy-derived context viewer.
 - The focused README regression test passes.
+
+## 2026-08-20 — README live-diff emphasis
+
+- Rewrote the README opening to lead with the visible block-by-block comparison
+  of successive captured request contexts.
+- Named added, removed, transformed, and retained blocks, plus the correlated
+  response and measured usage attached when a call completes.
+- Clarified that the viewer tracks model calls rather than assuming one API
+  exchange per user turn.
+- Both focused README regression tests pass.
