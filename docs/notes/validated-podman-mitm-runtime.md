@@ -87,10 +87,10 @@ export ANTHROPIC_VERTEX_PROJECT_ID=your-project
 export CLOUD_ML_REGION=global
 ```
 
-Higher-level experiment launchers source the parent project `.env` before
-starting their Python driver. This is essential. A fresh `CLAUDE_CONFIG_DIR`
-without the provider variables can open Claude's OAuth onboarding UI instead of
-the expected Vertex-backed REPL.
+The Context Inspector launcher requires and sources `.env` from its own project
+root before starting Python. It never falls back to a parent project. This is
+essential: a fresh `CLAUDE_CONFIG_DIR` without the provider variables can open
+Claude's OAuth onboarding UI instead of the expected Vertex-backed REPL.
 
 The runtime forwards these variables individually when present:
 
@@ -508,7 +508,7 @@ Adapt for the GUI:
 
 Before diagnosing Claude itself, check:
 
-- [ ] Was the parent `.env` sourced or were provider variables supplied?
+- [ ] Does project-root `.env` exist with the required provider variables?
 - [ ] Does the agent image exist under the configured name?
 - [ ] Is the proxy using a writable `/tmp/mitmproxy` `confdir`?
 - [ ] Was the CA generated before the agent mount was resolved?

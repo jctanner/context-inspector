@@ -15,11 +15,14 @@ records follow the filesystem-native work ledger indexed by [`PLAN.md`](PLAN.md)
 From this directory:
 
 ```bash
+cp .env.example .env
+# Edit .env with your local provider configuration.
 ./src/bin/context-inspector
 ```
 
-The launcher sources the parent project's `.env`, builds the browser bundle if
-needed, and starts the server on `http://127.0.0.1:8765`. Open that URL and use
+The launcher requires and sources `.env` from this project root; it does not
+search parent directories. It then builds the browser bundle if needed and
+starts the server on `http://127.0.0.1:8765`. Open that URL and use
 **Start Claude** to launch the existing two-container runner under the browser
 terminal's PTY.
 

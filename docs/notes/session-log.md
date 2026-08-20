@@ -396,3 +396,20 @@ Next:
   tool-free calls. Captured event 344 is now eligible for the meter while event
   345 remains internal.
 - Focused tests and the production frontend build pass.
+
+## 2026-08-20 — Required project-local environment
+
+- Added a credential-free `.env.example` for the validated Vertex setup and
+  common optional runtime overrides.
+- Changed the launcher to require and exclusively source project-root `.env`,
+  with an actionable error and no parent-directory fallback.
+- Updated startup and runtime documentation for the standalone repository.
+- Shell validation, all 57 Python tests, and the production frontend build pass.
+
+## 2026-08-20 — Local Vertex environment assembled
+
+- Assembled ignored project-root `.env` from the user-authorized
+  `~/bin/claude.vertex` configuration without displaying its values.
+- Retained exactly the three required Vertex assignments and excluded the
+  executable Claude command.
+- Confirmed non-empty values, shell syntax, mode `0600`, and Git ignore status.

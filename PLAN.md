@@ -12,7 +12,7 @@ requests and responses captured by the mitmproxy sidecar.
 
 ## Active tasks
 
-- [Initialize standalone repository](docs/tasks/current/023-initialize-standalone-repository.md)
+- None currently.
 
 ## Pending tasks
 
@@ -36,6 +36,7 @@ requests and responses captured by the mitmproxy sidecar.
 - [ADR-0009 — Persistent Claude user state](docs/decisions/ADR-0009-persistent-claude-user-state.md)
 - [ADR-0010 — Correlate responses by exact flow ID](docs/decisions/ADR-0010-correlate-responses-by-flow-id.md)
 - [ADR-0011 — Purpose-specific comparison lineages](docs/decisions/ADR-0011-purpose-specific-comparison-lineages.md)
+- [ADR-0012 — Require project-local environment](docs/decisions/ADR-0012-require-project-local-environment.md)
 
 ## Project plans
 
@@ -76,3 +77,6 @@ requests and responses captured by the mitmproxy sidecar.
 - [Classify harness context and request lineages](docs/tasks/done/020-classify-harness-context-and-request-lineages.md)
 - [Investigate adjacent request events](docs/tasks/done/021-investigate-adjacent-request-events.md)
 - [Fix title-purpose meter exclusion](docs/tasks/done/022-fix-title-purpose-meter-exclusion.md)
+- [Initialize standalone repository](docs/tasks/done/023-initialize-standalone-repository.md)
+- [Require project-local environment](docs/tasks/done/024-require-project-local-environment.md)
+- [Assemble local environment](docs/tasks/done/025-assemble-local-environment.md)
