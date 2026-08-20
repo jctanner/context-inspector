@@ -423,3 +423,11 @@ Next:
 - Included workspace, persistent Claude state, live events, captures, proxy CA,
   and ADC-copy relationships.
 - Added a focused README architecture regression test.
+
+## 2026-08-20 — Container lifecycle diagram clarification
+
+- Replaced ambiguous claims that the runner owns containers with an explicit
+  Podman engine node.
+- Documented that the runner requests a foreground interactive agent, a
+  detached proxy, and proxy removal through its exit trap.
+- The focused README regression test passes.

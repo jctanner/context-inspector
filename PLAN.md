@@ -81,3 +81,4 @@ requests and responses captured by the mitmproxy sidecar.
 - [Require project-local environment](docs/tasks/done/024-require-project-local-environment.md)
 - [Assemble local environment](docs/tasks/done/025-assemble-local-environment.md)
 - [Document stack architecture](docs/tasks/done/026-document-stack-architecture.md)
+- [Clarify container lifecycle diagram](docs/tasks/done/027-clarify-container-lifecycle-diagram.md)

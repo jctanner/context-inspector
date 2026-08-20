@@ -23,7 +23,8 @@ flowchart LR
         Server[Python ASGI server]
         PTY[PTY session manager]
         Deriver[Evidence-aware context projection]
-        Runner[MITM runner process]
+        Runner[Runtime orchestration script<br/>src/runtime/run.sh]
+        PodmanEngine[Podman engine]
     end
 
     subgraph Podman[Private Podman network]
@@ -44,8 +45,11 @@ flowchart LR
     Terminal <-->|terminal WebSocket| Server
     Viewer <-->|derived-context WebSocket| Server
     Server --> PTY --> Runner
-    Runner -->|starts and owns| Agent
-    Runner -->|starts and owns| Proxy
+    Runner -->|requests foreground agent lifecycle| PodmanEngine
+    Runner -->|requests detached proxy lifecycle| PodmanEngine
+    PodmanEngine -->|runs interactive --rm container| Agent
+    PodmanEngine -->|runs detached sidecar| Proxy
+    Runner -.->|exit trap requests proxy removal| PodmanEngine
 
     Agent ==>|model HTTPS through configured proxy| Proxy
     Proxy ==>|forwarded model HTTPS| Vertex
@@ -69,7 +73,7 @@ flowchart LR
     classDef storage fill:#f4efff,stroke:#7256a3,color:#302247;
     classDef external fill:#fdecec,stroke:#a44f4f,color:#4d2020;
     class Terminal,Viewer ui;
-    class Server,PTY,Deriver,Runner service;
+    class Server,PTY,Deriver,Runner,PodmanEngine service;
     class Agent,Proxy container;
     class Workspace,ClaudeState,Events,Runtime,HostADC storage;
     class Vertex external;
