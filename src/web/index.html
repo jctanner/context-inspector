@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Context Inspector</title>
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Wire-observed agent session</p>
+        <h1>Context Inspector</h1>
+      </div>
+      <div class="session-controls">
+        <span id="status" class="status" role="status">Not connected</span>
+        <button id="start" type="button">Start Claude</button>
+        <button id="stop" type="button" disabled>Stop</button>
+      </div>
+    </header>
+    <main id="workspace" class="workspace">
+      <section class="pane terminal-pane" aria-labelledby="terminal-title">
+        <div class="pane-header">
+          <h2 id="terminal-title">Claude CLI</h2>
+          <span id="terminal-size" class="metric">—</span>
+        </div>
+        <div id="terminal" aria-label="Interactive Claude terminal"></div>
+      </section>
+      <div id="pane-divider" class="pane-divider" role="separator" aria-label="Resize terminal and context panes" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" tabindex="0"></div>
+      <section class="pane context-pane" aria-labelledby="context-title">
+        <div class="pane-header">
+          <h2 id="context-title">Model request context changes</h2>
+          <div class="pane-header-actions">
+            <span id="flow-count" class="metric">0 requests</span>
+            <button id="clear-history" class="secondary-button" type="button" disabled title="Clear displayed context history without stopping Claude">Clear history</button>
+          </div>
+        </div>
+        <section class="context-meter" aria-labelledby="context-meter-title">
+          <div class="context-meter-labels">
+            <strong id="context-meter-title">Latest non-internal request context size</strong>
+            <span id="context-meter-value">Awaiting response usage</span>
+          </div>
+          <progress id="context-meter-progress" max="100" value="0" aria-describedby="context-meter-detail">Awaiting measurement</progress>
+          <p id="context-meter-detail">The bar measures request context using token accounting returned in the matching model response.</p>
+        </section>
+        <div id="flow-empty" class="empty-state">
+          <p class="empty-kicker">Independent evidence path</p>
+          <h3>Waiting for model traffic.</h3>
+          <p>Start Claude and send a prompt. Each model request will be compared structurally with its preceding observed context.</p>
+          <dl>
+            <div><dt>Exact evidence</dt><dd>Awaiting bytes</dd></div>
+            <div><dt>Inferred stream</dt><dd>Unclassified</dd></div>
+            <div><dt>Completeness</dt><dd>Awaiting archive</dd></div>
+          </dl>
+        </div>
+        <ol id="flow-events" class="flow-events" aria-label="Captured model traffic" aria-live="polite"></ol>
+      </section>
+    </main>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+parent_env="${project_dir}/../.env"
+
+if [[ -f ${parent_env} ]]; then
+    set -a
+    source "${parent_env}"
+    set +a
+fi
+
+if [[ ! -f "${project_dir}/src/web/dist/index.html" ]]; then
+    npm --prefix "${project_dir}/src/web" run build
+fi
+
+cd "${project_dir}"
+exec python -m src.server
