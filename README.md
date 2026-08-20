@@ -15,7 +15,7 @@ records follow the filesystem-native work ledger indexed by [`PLAN.md`](PLAN.md)
 ```mermaid
 flowchart LR
     subgraph Browser[Browser on the host]
-        Terminal[Claude CLI terminal]
+        Terminal[xterm.js Claude terminal]
         Viewer[Context diff, response, and usage viewer]
     end
 
@@ -42,12 +42,14 @@ flowchart LR
     Vertex[Google Vertex AI<br/>Claude endpoint]
     HostADC[Host Google ADC]
 
-    Terminal <-->|terminal WebSocket| Server
+    Terminal <-->|keystrokes, resize, and raw terminal bytes<br/>terminal WebSocket| Server
     Viewer <-->|derived-context WebSocket| Server
-    Server --> PTY --> Runner
+    Server <-->|PTY input and output| PTY
+    PTY <-->|stdin and stdout of run.sh| Runner
     Runner -->|requests foreground agent lifecycle| PodmanEngine
     Runner -->|requests detached proxy lifecycle| PodmanEngine
-    PodmanEngine -->|runs interactive --rm container| Agent
+    Runner <-->|foreground podman attach| PodmanEngine
+    PodmanEngine <-->|container TTY| Agent
     PodmanEngine -->|runs detached sidecar| Proxy
     Runner -.->|exit trap requests proxy removal| PodmanEngine
 
@@ -79,10 +81,13 @@ flowchart LR
     class Vertex external;
 ```
 
-The terminal path remains the real Claude CLI: the browser does not call a
-model SDK. Independently, all model HTTPS crosses the proxy sidecar. Its addon
-records exact wire evidence and lifecycle events, which the server projects
-into the interpreted context view without replacing the raw capture.
+The terminal path remains the real Claude CLI: xterm.js sends keystrokes and
+resize messages over a terminal WebSocket, while the server relays unmodified
+PTY bytes in the opposite direction. That PTY is attached through the
+foreground `podman run` client to the agent container's TTY. The browser does
+not call a model SDK. Independently, all model HTTPS crosses the proxy sidecar.
+Its addon records exact wire evidence and lifecycle events, which the server
+projects into the interpreted context view without replacing the raw capture.
 
 ## Run the current prototype
 

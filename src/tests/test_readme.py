@@ -8,6 +8,7 @@ class ReadmeArchitectureTests(unittest.TestCase):
         self.assertIn("```mermaid\nflowchart LR", readme)
         for label in (
             "Browser on the host",
+            "xterm.js Claude terminal",
             "Loopback Context Inspector application",
             "Runtime orchestration script<br/>src/runtime/run.sh",
             "Podman engine",
@@ -15,10 +16,13 @@ class ReadmeArchitectureTests(unittest.TestCase):
             "Agent container<br/>real Claude CLI",
             "mitmproxy sidecar<br/>live-capture addon",
             "Google Vertex AI<br/>Claude endpoint",
-            "terminal WebSocket",
+            "keystrokes, resize, and raw terminal bytes<br/>terminal WebSocket",
+            "PTY input and output",
+            "stdin and stdout of run.sh",
+            "foreground podman attach",
+            "container TTY",
             "requests foreground agent lifecycle",
             "requests detached proxy lifecycle",
-            "runs interactive --rm container",
             "exit trap requests proxy removal",
             "model HTTPS through configured proxy",
             "Versioned live events<br/>events.jsonl",
@@ -27,7 +31,8 @@ class ReadmeArchitectureTests(unittest.TestCase):
             "read-only ADC mount",
         ):
             self.assertIn(label, readme)
-        self.assertIn("the browser does not call a\nmodel SDK", readme)
+        self.assertIn("server relays unmodified\nPTY bytes", readme)
+        self.assertIn("The browser does\nnot call a model SDK", readme)
         self.assertIn("without replacing the raw capture", readme)
 
 

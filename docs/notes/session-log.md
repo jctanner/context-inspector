@@ -431,3 +431,13 @@ Next:
 - Documented that the runner requests a foreground interactive agent, a
   detached proxy, and proxy removal through its exit trap.
 - The focused README regression test passes.
+
+## 2026-08-20 — Browser-to-Claude terminal path clarification
+
+- Expanded the Mermaid diagram from a generic terminal WebSocket into the
+  complete xterm.js-to-agent-container TTY path.
+- Labeled browser keystrokes, resize control, raw output bytes, PTY I/O,
+  `run.sh` stdin/stdout, foreground Podman attachment, and container TTY.
+- Expanded the README prose to explain that this full-duplex console path is
+  independent of the proxy-derived context viewer.
+- The focused README regression test passes.
