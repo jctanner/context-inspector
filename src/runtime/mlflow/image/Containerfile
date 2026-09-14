@@ -1,0 +1,7 @@
+ARG BASE_IMAGE=localhost/claude-task-runner:latest
+FROM docker.io/library/node:24.21.0-bookworm-slim AS node
+FROM ${BASE_IMAGE}
+# The native Claude executable does not provide a Node runtime for plugin hooks.
+# Preserve the base image's user, command and filesystem; add only Node.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+RUN node --version && command -v timeout

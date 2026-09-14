@@ -25,6 +25,37 @@ requests and responses captured by the mitmproxy sidecar.
 
 ## Deployment note
 
+Task 064 is ready for user-managed restart: Claude will launch the stdio MCP
+dump script with the workspace config at `.context/mcp-dump/config.json`.
+One tool initially; later count/schema edits emit live notifications without
+restart. Protocol verified in the agent image; live Claude UI/loading verification
+awaits restart. Full suite: 126 passed, three unrelated opt-in tests skipped.
+
+Task 060 is ready for user-managed restart. Normal startup now permanently clears
+the agreed Claude history, memories and generated-state allowlist, with no backups.
+Settings, credentials, plugins, instructions and workspace remain. Active/paused
+container use and concurrent stack ownership block cleanup. 115 tests pass;
+the agent did not clean the real home or restart the active stack.
+
+Task 059 fixes remote MLflow chart POSTs by configuring browser origins separately
+from allowed hosts. Approved-origin POSTs and rejection cases pass in a real
+MLflow container. Local .env is updated; user restart is required. No active-stack
+restart or data changes were performed.
+
+Task 058 configures this installation's ignored .env for remote MLflow access
+on 0.0.0.0:5000 with explicit host/IP allowances. Configuration and focused tests
+pass; user restart is required. The agent has not restarted the stack or changed
+firewall rules. Code defaults remain loopback; remote access is unauthenticated.
+
+Task 057 is ready for user-managed launch/restart. User confirmed task 056's
+MLflow server is running; the agent did not restart it. The next normal launch
+adds pinned Claude tracing, a cached Node-enabled derived agent image and a fresh
+Claude Code experiment. New Claude sessions export completed turns to MLflow;
+the database/artifacts still reset per stack launch. 103 tests pass, including
+real-CLI export against a fake model and synthetic nested-subagent reconstruction.
+User explicitly requested that the agent NOT start the stack. Persistent home
+and workspace remain unchanged. Span-to-request UI correlation is not implemented.
+
 Current handoff: user stopped the stack. Tasks 053/054 are built and tested;
 the next normal launch uses container/workspace and container/home/evaluator
 mounts and exposes read-only Memory navigation. The workspace was moved intact;
@@ -59,6 +90,16 @@ The current Claude session has been preserved.
 - [Browser requests a missing favicon](docs/bugs/open/missing-favicon.md)
 
 ## Decisions
+
+- [ADR-0028 — Dynamic stdio MCP](docs/decisions/ADR-0028-dynamic-stdio-mcp.md)
+
+- [ADR-0027 — Random skill generator](docs/decisions/ADR-0027-random-skill-generator.md)
+
+- [ADR-0026 — Clean Claude startup](docs/decisions/ADR-0026-clean-claude-startup.md)
+
+- [ADR-0025 — Claude MLflow plugin](docs/decisions/ADR-0025-claude-mlflow-plugin.md)
+
+- [ADR-0024 — Ephemeral MLflow](docs/decisions/ADR-0024-ephemeral-mlflow.md)
 
 - [ADR-0023 — Read-only mirrored memory](docs/decisions/ADR-0023-read-only-memory.md)
 
@@ -113,6 +154,34 @@ The current Claude session has been preserved.
 - [Request-stream identity investigation](docs/notes/request-stream-identity-investigation.md)
 
 ## Completed setup
+
+- [Dynamic stdio MCP](docs/tasks/done/064-dynamic-stdio-mcp.md) — Python script,
+  live config-driven tools, isolated-container validation; ready for restart.
+
+- [Variable skill lengths](docs/tasks/done/063-variable-skill-lengths.md) —
+  random 500–5,000 total lines per generated skill; eight tests pass.
+
+- [Rename scripts directory](docs/tasks/done/062-rename-scripts.md) — generator
+  now lives at `scripts/skill-maker.py`; five tests pass.
+
+- [Random skill generator](docs/tasks/done/061-random-skill-generator.md) —
+  standalone 1,000-skill experiment utility; five tests pass; live workspace untouched.
+
+- [Clean Claude startup](docs/tasks/done/060-clean-claude-startup.md) — allowlisted
+  permanent history/memory reset, safety guards, no backups; 115 tests pass.
+
+- [MLflow browser origins](docs/tasks/done/059-mlflow-browser-origins.md) — fixes
+  chart POST 403s, with real-container origin/host regression tests; restart needed.
+
+- [Remote MLflow access](docs/tasks/done/058-mlflow-remote-access.md) — local
+  bind and host allowlist ready for user-managed restart.
+
+- [Claude MLflow integration](docs/tasks/done/057-claude-mlflow-integration.md) —
+  bounded official 3.16-compatible Stop hook, private networking, per-launch
+  experiment and read-only mounts; ready for user-managed restart.
+
+- [Ephemeral MLflow](docs/tasks/done/056-ephemeral-mlflow.md) — stack-owned
+  disposable tracking server; 96 tests pass including real DB/artifact reset.
 
 - [Response evidence tabs](docs/tasks/done/055-response-tabs.md) — independent
   closable Response #N views, lazy full replies/tool calls/exact evidence; refresh to load.

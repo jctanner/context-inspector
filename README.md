@@ -20,6 +20,176 @@ sidecar; they are not reconstructed from the terminal transcript.
 Implementation code lives exclusively under `src/`. Project state and design
 records follow the filesystem-native work ledger indexed by [`PLAN.md`](PLAN.md).
 
+## Clean startup
+
+Every normal stack launch permanently clears the following entries under
+`container/home/evaluator/.claude/` **before** starting MLflow and the app:
+
+- `projects/`, `agent-memory/` — old transcripts, subagent transcripts and memories
+- `history.jsonl`, `file-history/` — prompt history and rewind checkpoints
+- `sessions/`, `session-env/`, `shell-snapshots/` — previous session state
+- `cache/`, `debug/`, `plans/`, `tasks/`, `todos/`, `paste-cache/`, `image-cache/`
+
+**The reset creates no backups or archives.** Startup prints each removed top-level
+entry. Deletion cannot be undone. Stop the previous stack and let Claude exit
+before launching again: cleanup refuses a live/paused container using that home
+and holds a lock to prevent concurrent stack instances. Filesystem/symlink safety
+checks fail closed; a failed deletion aborts startup rather than serving a
+partially reset session.
+
+Settings, credentials, installed plugins, authored instructions/skills, unknown
+entries, sibling `.claude.json`, and `container/workspace/` are preserved. This
+is not a workspace or factory reset: instructions/memory stored in custom
+locations or plugins remain. The MLflow plugin lives outside the cleared paths;
+new transcripts are created normally and remain available throughout each new
+session for its Stop hook. Browser refreshes and new sessions within the same
+stack do not repeat the reset. Direct ASGI use and non-Claude command overrides
+do not run this startup reset.
+
+## MLflow tracing
+
+`src/bin/context-inspector` also starts a disposable MLflow container, waits for
+its health endpoint, then starts the inspector. Open **http://127.0.0.1:5000**
+on the host to use MLflow's own UI. New Claude sessions automatically export
+completed turns into the **Claude Code** experiment. No host MLflow Python
+dependency or manual `/mlflow-tracing:setup` is needed.
+
+On first tracing-enabled startup the stack installs the locked
+`@mlflow/claude-code@0.4.0` package locally and builds a cached derived agent image
+adding Node 24.21.0. Your original `AGENT_IMAGE` is unchanged. The official hook
+bundle and a small timeout adapter are mounted read-only in the agent; no hooks
+or experiment IDs are written into your existing Claude settings. The adapter
+runs the upstream Stop hook with a 30-second deadline and 5-second kill grace.
+MLflow and Claude use the same private Podman network; tracking traffic bypasses
+the MITM proxy and uses the unique MLflow container hostname, not the host port.
+
+**Restart the stack and create a new Claude session to activate tracing.** Finish
+a turn, then open MLflow → Claude Code → Traces. The pinned plugin exports at
+Claude's Stop event (when it finishes responding); you need not exit Claude.
+Traces carry Claude's session ID and available tool IDs/subagent structure.
+These are transcript-derived views, not exact model payloads: timings/costs may
+be estimated and some auxiliary model requests are absent. The inspector's wire
+captures and request-number comparisons are unchanged; span-to-request joining
+is not implemented yet. Model pricing uses the package's bundled snapshot, with
+remote catalog fetching disabled.
+
+Interrupted/error turns, disabled hooks or an unavailable tracking server can
+leave missing traces. Hook failures are best-effort and do not block Claude;
+timeouts print a warning. To inspect traces, keep the stack running—shutdown
+removes MLflow data. Traces contain sensitive prompts, responses and tool results;
+there is no authentication on the development tracking server.
+
+The official `ghcr.io/mlflow/mlflow:v3.16.0` image is pulled on first use and cached.
+SQLite metadata and artifacts live only inside the new container: **all MLflow
+data is discarded when the stack stops**. Every stack launch creates a new
+container; browser refreshes and new Claude sessions do not reset it. There are
+no workspace, Claude home, credential, or data-volume mounts in MLflow.
+
+Optional `.env` settings:
+
+- `CONTEXT_INSPECTOR_MLFLOW_ENABLED=0` skips MLflow entirely (default `1`).
+- `CONTEXT_INSPECTOR_MLFLOW_TRACING_ENABLED=0` keeps MLflow but disables automatic
+  Claude tracing and skips the Node/plugin setup (default `1`).
+- `CONTEXT_INSPECTOR_MLFLOW_EXPERIMENT_NAME='My Experiment'` changes the experiment
+  name (default `Claude Code`); its ID is recreated on every stack launch.
+- `CONTEXT_INSPECTOR_MLFLOW_PORT=5001` changes its host port (default `5000`).
+- `CONTEXT_INSPECTOR_MLFLOW_IMAGE=...` overrides the pinned image.
+- For access from another machine, set `CONTEXT_INSPECTOR_MLFLOW_HOST=0.0.0.0`
+  and `CONTEXT_INSPECTOR_MLFLOW_ALLOWED_HOSTS=localhost:*,127.0.0.1:*,YOUR_HOST:5000`
+  plus `CONTEXT_INSPECTOR_MLFLOW_CORS_ALLOWED_ORIGINS=http://localhost:*,http://127.0.0.1:*,http://YOUR_HOST:5000`
+  using your actual hostname/IP and port. Both lists are required: without the
+  browser-origin allowance, the page loads but chart POSTs return 403. Add each
+  hostname/IP you use, with the correct URL scheme in the origin list.
+  MLflow is unauthenticated: expose it
+  only to a trusted network. Alternatively use an SSH tunnel to the loopback port.
+
+Ctrl-C/normal shutdown removes the owned container. Startup failure also cleans
+it up and prevents the app from starting. If the process is forcibly killed or
+the machine loses power, an orphan may remain: inspect `podman ps -a` and remove
+only the exact `context-inspector-mlflow-...` name printed at launch. A new stack
+never reuses or deletes another launch's container; an occupied port fails startup.
+Direct ASGI `create_app()` use does not provision MLflow; use the normal launcher
+or `python -m src.server` for the full stack.
+
+Reproducible disposable-container smoke tests (free ports, isolated fake model,
+no real model credentials/calls or user-state mounts):
+
+```bash
+CONTEXT_INSPECTOR_TEST_MLFLOW=1 .venv/bin/python -m unittest src.tests.test_mlflow.MLflowContainerTests src.tests.test_claude_mlflow.ClaudeMLflowContainerTests
+```
+
+Configuration follows MLflow's [official image documentation](https://mlflow.org/docs/latest/ml/docker/)
+and [Claude tracing guide](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/claude_code/).
+Export timing is verified against the pinned Stop-hook implementation and
+[Claude's hook semantics](https://code.claude.com/docs/en/hooks-guide), which are
+more specific than the MLflow guide's session-end wording.
+
+## Dynamic MCP tool experiment
+
+New Claude sessions launch a Python **stdio** MCP server named `mcp-dump`.
+It is a persistent subprocess, not an HTTP server; no port is opened and no
+additional Python dependencies are needed. The runtime mounts its source
+read-only and supplies `--mcp-config`, without replacing other MCP settings.
+Set `CONTEXT_INSPECTOR_MCP_DUMP_ENABLED=0` to omit it on the next session.
+
+After the initial stack restart, check `/mcp` for `mcp-dump`. Edit this host file:
+
+```text
+container/workspace/.context/mcp-dump/config.json
+```
+
+Claude sees the same file at `/workspace/.context/mcp-dump/config.json`:
+
+```json
+{
+  "tool_count": 1,
+  "description_words": 200,
+  "schema_properties": 20,
+  "seed": 42
+}
+```
+
+Change `tool_count` to `1000` and save. The script polls once per second and
+sends `notifications/tools/list_changed` over stdout; Claude can then refresh
+the inventory without a restart. Decrease the count to remove tools, or use
+`0` for an empty inventory. Invalid/partial edits and temporary file removal keep
+the previous valid list. If startup finds an invalid file, the list stays empty
+until corrected. A missing file is created with the one-tool default only at
+server startup; an existing file is never overwritten. Workspace configuration
+survives the stack's Claude-history cleanup.
+
+All four keys are required, and values must be integers. Limits: `tool_count`
+0–10,000; `description_words` 0–2,000; `schema_properties` 0–100; `seed`
+0–4,294,967,295. Each optional string property has 16 random description words.
+A conservative 64 MB aggregate-metadata estimate also bounds combinations.
+Tools have stable names (`dump_tool_00001`, etc.) and seeded content; changing
+only the count leaves surviving definitions identical. Calls validate their
+arguments and return a short synthetic success without side effects or argument
+echoing. Listings are paginated in groups of 100, and configuration changes
+invalidate old cursors.
+
+Compare `/mcp` and captured requests before/after edits. **Advertised tools are
+not necessarily model-loaded schemas:** Claude's tool search may defer them,
+and removing a tool does not erase old conversation content. This experiment
+does not alter Claude's tool-search or context-budget settings.
+
+Run the script directly for another stdio MCP client:
+
+```bash
+python3 src/runtime/mcp_dump/server.py --config /path/to/config.json
+```
+
+It waits for newline-delimited MCP JSON-RPC on stdin; diagnostics go to stderr.
+Closing stdin ends the process. Tests use synthetic files and no model calls:
+
+```bash
+python3 -m unittest src.tests.test_mcp_dump -v
+CONTEXT_INSPECTOR_TEST_MCP=1 python3 -m unittest src.tests.test_mcp_dump -v
+```
+
+The second command additionally tests the script inside an isolated agent
+container. It does not start the stack or connect to the user's Claude session.
+
 ## Architecture
 
 ```mermaid

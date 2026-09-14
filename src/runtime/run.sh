@@ -16,7 +16,7 @@ run_id="$(date -u +%Y%m%dT%H%M%SZ)-${session_slug}"
 capture_name="flows-${run_id}.jsonl"
 proxy_log_name="mitmproxy-${run_id}.log"
 proxy_image=${MITM_PROXY_IMAGE:-docker.io/mitmproxy/mitmproxy:12.1.2}
-agent_image=${AGENT_IMAGE:-localhost/claude-task-runner:latest}
+agent_image=${CONTEXT_INSPECTOR_TRACING_AGENT_IMAGE:-${AGENT_IMAGE:-localhost/claude-task-runner:latest}}
 network_name=${MITM_NETWORK_NAME:-agent-mitm-network}
 proxy_name="context-inspector-proxy-${session_slug:0:32}"
 proxy_port=${MITM_PROXY_PORT:-8080}
@@ -135,6 +135,11 @@ podman run --rm --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 -
 
 agent_command=$1
 shift
+source "${runtime_dir}/mlflow-env.sh"
+configure_claude_tracing
+source "${runtime_dir}/mcp-dump-env.sh"
+configure_mcp_dump
+set -- "${tracing_args[@]}" "${mcp_dump_args[@]}" "$@"
 podman run --rm -it --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 --user 0 --workdir /workspace \
     --entrypoint bash "${agent_env[@]}" "${mounts[@]}" "${bootstrap_mount[@]}" "${agent_image}" \
     /context-inspector-entrypoint.sh "${agent_command}" "$@"

@@ -1,5 +1,119 @@
 # Session Log
 
+## 2026-09-14 — Dynamic stdio MCP experiment
+
+- Task 064: implemented a dependency-free Python stdio MCP server with a
+  one-second config poll and tools/list_changed notifications. ADR-0028 records
+  process ownership, protocol and evidence boundaries. Python 3.13.14 exists in
+  the base image; no new image, HTTP port, SDK or model call is required.
+- Read-only source mount plus additive --mcp-config registers only for Claude;
+  opt out with CONTEXT_INSPECTOR_MCP_DUMP_ENABLED=0. Other MCP settings and
+  existing MLflow arguments remain. Created the ignored workspace config with
+  one tool; user must restart to activate the new mount.
+- Six focused tests pass including a network-isolated real agent container:
+  initialize, paginated 1,000-tool inventory, growth/shrink/zero notifications,
+  stable definitions, harmless calls, invalid/missing config retention and
+  recovery, invalid protocol requests, and shell wiring. This verifies MCP
+  protocol exchange, not actual Claude UI refresh or model-visible schemas.
+- No active-session interaction or stack restart was performed.
+- Full regression: 129 tests run, 126 passed and three unrelated opt-in MLflow
+  container tests skipped. Initial sandboxed run stalled after a network error;
+  interrupted and reran successfully with local sockets/container access.
+  Shell syntax, whitespace and ignored workspace config checks also pass.
+
+## 2026-09-14 — Variable skill lengths
+
+- Task 063 replaces the interrupted 1,000-line minimum request with uniformly
+  random 500–5,000 total lines per file, inclusive of the nine header lines.
+- Body lines contain 20 random words by default; bounded descriptions remain
+  unchanged. Added line bounds and words-per-line options, replacing body-words.
+- Tests use temporary directories only; existing live skills are not rewritten.
+  Registration description costs and loaded skill body costs remain distinct.
+- All eight tests pass, including a complete 1,000-file batch and endpoint
+  checks; whitespace validation passes. No stack changes.
+
+## 2026-09-14 — Rename scripts directory
+
+- Task 062: renamed the generator to `scripts/skill-maker.py` per user request,
+  updated tests/docs and ADR-0027; all five generator tests pass.
+- Removed the obsolete directory and its disposable bytecode cache only.
+  Generated skills and the running stack were untouched.
+
+## 2026-09-14 — Random skill generator
+
+- Task 061: added the explicitly requested `script/skill-maker.py` path;
+  ADR-0027 records this source-layout exception and opt-in generation.
+- Defaults: 1,000 skills in the ignored nested workspace skill-dump, with
+  96 random description words and 256 body words each. Claude's description
+  budget may limit actual inclusion; generated words are not observed tokens.
+- Five temporary-directory tests pass, including a complete 1,000-skill CLI
+  batch, deterministic seeds, collisions, dangling symlinks and invalid counts.
+- No live skills were generated, no existing data deleted, and no stack restart.
+
+## 2026-09-14 — Clean Claude startup
+
+- Task 060: reset agreed generated state and memories before new stack sessions;
+  preserve configuration/plugins/workspace. User explicitly rejected backups:
+  ADR-0026 uses permanent allowlisted removal, live-container checks and a
+  stack-lifetime lock, with symlink-resistant descriptor-relative traversal.
+- Implementation/tests will not clean the real home or restart the active stack.
+- Complete: 115 tests pass, including 10 temporary-home safety/preservation/reset
+  tests and real-container MLflow export/reset/origin regressions. No archives or
+  backups are created. No real home cleanup or stack restart performed; the next
+  user-managed launch permanently clears the agreed entries.
+
+## 2026-09-14 — MLflow browser-origin fix
+
+- Task 059 adds explicit CORS origin configuration and enumerates this host's
+  approved LAN/hostname/VPN URLs in ignored local .env. Code defaults remain
+  loopback; Host checks and security middleware stay enabled. User will restart.
+- Complete: 12 MLflow tests pass, including real-container browser POST allow/
+  reject checks and database/artifact reset. 11 additional focused tests pass;
+  local .env loading and whitespace checks verified. No active-stack restart.
+
+## 2026-09-14 — MLflow remote chart diagnosis
+
+- Confirmed read-only search POST returns 403 with the LAN browser Origin and
+  200 without it. Logs explicitly block that Origin for chart metrics requests.
+- Task 058 missed the separate CORS/origin allowlist. Recorded open bug; no
+  service/configuration changes or restart during diagnosis.
+
+## 2026-09-14 — Remote MLflow access
+
+- Task 058: configured ignored local .env for 0.0.0.0:5000 and explicit host
+  name/LAN/VPN IPv4 allowances. Kept code defaults on loopback and the automatic
+  per-container tracing hostname allowance. No wildcard Host bypass, firewall
+  changes or stack restart. User performs restart; MLflow remains unauthenticated.
+
+## 2026-09-14 — Claude MLflow integration
+
+- Task 057: user confirms MLflow is running. Official 3.16 Python setup delegates
+  to the Node plugin; inspect and pin that package directly. Keep transcript-derived
+  traces separate from exact proxy evidence. No running session restart yet.
+- Agent image lacks Node; derived image adds Node 24.21.0 and preserves the base.
+  Read-only hook-only adapter invokes @mlflow/claude-code 0.4.0 with a 30s deadline.
+- Breadboard's reference confirms setup-before-launch, health checks and bounded
+  hooks. Retain those safeguards, not its legacy Python hook installation.
+- Real Claude against a local fake model completed a Read tool turn and exported
+  a trace. Verification SDK required global HTTP tracking URI for artifact download;
+  this was a test-query configuration issue, not missing export.
+- Complete: 103 Python tests passed, including automatic real-CLI hook export
+  with exact session/tool IDs and separate synthetic nested-subagent reconstruction.
+  Database/artifact reset, shell syntax and whitespace checks pass. No frontend edits.
+- User explicitly wants to launch the stack themselves. No active stack was
+  stopped/restarted and no persistent Claude/workspace files were modified.
+
+## 2026-09-14 — Ephemeral MLflow infrastructure
+
+- Task 056: stack entrypoint owns MLflow; the Claude runner is session-scoped
+  and is not the correct lifecycle boundary. SQLite/artifacts stay container-local.
+- ADR-0024 records disposable storage, loopback binding and deferred integration.
+- Complete: 96 Python tests pass including real-container UI, experiment/run,
+  artifact upload/download and fresh-launch database/artifact reset checks.
+  Initial test search needed explicit max_results; fixture corrected.
+- MLflow test containers removed; active stack and Claude session untouched.
+  Next normal stack launch starts MLflow. No Claude export is configured yet.
+
 ## 2026-09-14 — Response evidence tabs
 
 - Task 055 extends existing closable evidence tabs with Response #N. Current

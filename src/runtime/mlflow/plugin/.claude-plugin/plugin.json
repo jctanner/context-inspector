@@ -1,0 +1,5 @@
+{
+  "name": "context-inspector-mlflow",
+  "version": "1.0.0",
+  "description": "Bounded invocation of the pinned official MLflow Claude Stop hook"
+}

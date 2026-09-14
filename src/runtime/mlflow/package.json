@@ -1,0 +1,8 @@
+{
+  "name": "context-inspector-claude-tracing",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "@mlflow/claude-code": "0.4.0"
+  }
+}

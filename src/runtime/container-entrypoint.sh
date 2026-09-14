@@ -39,6 +39,18 @@ fi
 install -m 0644 /mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/context-inspector-proxy.crt
 update-ca-certificates >/dev/null
 
+if [[ ${1##*/} == claude && ${MLFLOW_CLAUDE_TRACING_ENABLED:-false} == true ]]; then
+    if ! command -v node >/dev/null || ! command -v timeout >/dev/null; then
+        echo "ERROR: Claude tracing requires the stack's Node-enabled agent image" >&2
+        exit 1
+    fi
+    if ! curl --fail --silent --show-error --output /dev/null --connect-timeout 3 --max-time 5 \
+        "${MLFLOW_TRACKING_URI:?MLFLOW_TRACKING_URI is required}/health"; then
+        echo "ERROR: agent cannot reach the stack's MLflow server" >&2
+        exit 1
+    fi
+fi
+
 # Preserve the image PATH and provider/proxy environment, but restore the agent
 # account's home after Podman started the bootstrap as root. Never run Claude as root.
 exec setpriv --reuid=1000 --regid=1000 --clear-groups --no-new-privs \

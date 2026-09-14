@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mcp-dump": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/opt/context-inspector/mcp-dump/server.py",
+        "--config",
+        "/workspace/.context/mcp-dump/config.json"
+      ]
+    }
+  }
+}
