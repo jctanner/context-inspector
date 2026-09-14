@@ -2,7 +2,7 @@ import { element } from "./readable";
 import type { PayloadNode } from "./payload-outline-model";
 
 export function addPayloadOutline(layout: HTMLElement, before: PayloadNode | null, after: PayloadNode,
-  beforeRows: Map<number, HTMLElement>, afterRows: Map<number, HTMLElement>): { selectRow: (row: HTMLElement) => void } {
+  beforeRows: Map<number, HTMLElement>, afterRows: Map<number, HTMLElement>) {
   const outline = element("nav", "payload-outline", "");
   outline.setAttribute("aria-label", "Payload outline");
   const heading = element("h3", "", "Payload outline");
@@ -78,9 +78,10 @@ export function addPayloadOutline(layout: HTMLElement, before: PayloadNode | nul
     tree.append(jump(root)); children(tree, root);
   };
   side.onchange = render; render();
-  return { selectRow: row => {
-    const desiredSide = row.classList.contains("payload-remove") ? "Before"
-      : row.classList.contains("payload-add") ? "After" : side.value;
+  return { getLocation: () => target ? { side: side.value, line: (side.value === "Before" ? oldLines : newLines).get(target) } : null,
+    selectRow: (row: HTMLElement, preferredSide?: string) => {
+    const desiredSide = preferredSide ?? (row.classList.contains("payload-remove") ? "Before"
+      : row.classList.contains("payload-add") ? "After" : side.value);
     if (side.value !== desiredSide) { side.value = desiredSide; render(); }
     const line = (side.value === "After" ? newLines : oldLines).get(row);
     let node = side.value === "After" ? after : before;

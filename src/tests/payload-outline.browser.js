@@ -18,15 +18,16 @@ async (page) => {
     metrics: { body_bytes: 20000, previous_body_bytes: null, token_count: null }, changes: [],
     exact_request: { body: { decoded: { value: payload } } } };
   let baseline;
+  let detailFetches = 0;
   try {
     await context.route("**/api/sessions/active", route => route.fulfill({ json: { session_id: "fixture", alive: true } }));
     await context.route("**/api/sessions/fixture/context-history?*", route => route.fulfill({ json: {
       events: [event], cursor: 1, total: 1, next_before: null, latest_usage: null,
     } }));
-    await context.route("**/api/sessions/fixture/context-details/**", route => route.fulfill({ json:
+    await context.route("**/api/sessions/fixture/context-details/**", route => { detailFetches++; return route.fulfill({ json:
       route.request().url().endsWith("/baseline/request")
         ? { exact_request: { body: { decoded: { value: baseline } } } }
-        : { ...event, detail_url: undefined } }));
+        : { ...event, detail_url: undefined } }); });
     await context.routeWebSocket("**/api/sessions/fixture/terminal", () => {});
     await context.routeWebSocket("**/api/sessions/fixture/contexts?*", ws => ws.send(JSON.stringify({ type: "context-batch", events: [], cursor: 1 })));
     const view = await context.newPage();
@@ -97,6 +98,77 @@ async (page) => {
     await navigate("Previous", "/messages/204/content");
     await outline.getByLabel("Payload side").selectOption("After");
     await navigate("Previous", "/messages/0/content");
-    return { firstRequest: true, safeLabels: true, lazyChildren: true, pagedArrays: true, visibleJump: true, toolNames: true, responsiveLayout: true };
+    const fetchesBeforeLayout = detailFetches;
+    await view.getByRole("button", { name: "Side-by-side", exact: true }).click();
+    const activeLayout = view.locator('.payload-layout:not([hidden])');
+    const splitTable = activeLayout.locator('.payload-split');
+    await splitTable.waitFor();
+    check(JSON.stringify(await splitTable.locator('th[scope="colgroup"]').allTextContents()) === JSON.stringify(["Before", "After"]), "split headings must group both sides");
+    check(await splitTable.getByRole('columnheader', { name: 'Before change', exact: true }).innerText() === '+/−', "compact change heading must retain accessible meaning");
+    for (const width of [1280, 901, 768, 390, 320]) {
+      await view.setViewportSize({ width, height: 844 });
+      const overflow = await splitTable.locator('th').evaluateAll(cells => cells.filter(cell => {
+        const range = document.createRange(); range.selectNodeContents(cell);
+        const box = cell.getBoundingClientRect();
+        return [...range.getClientRects()].some(text => text.left < box.left - 1 || text.right > box.right + 1);
+      }).map(cell => cell.textContent));
+      check(overflow.length === 0, `split header text overflows at ${width}px: ${overflow}`);
+      const groups = await splitTable.locator('th[scope="colgroup"]').evaluateAll(cells => cells.map(cell => cell.getBoundingClientRect().width));
+      check(Math.abs(groups[0] - groups[1]) < 2, "split halves must have balanced widths");
+    }
+    await view.setViewportSize({ width: 1280, height: 800 });
+    check(await view.getByRole("button", { name: "Side-by-side", exact: true }).getAttribute("aria-pressed") === "true", "split selection must be accessible");
+    check(await activeLayout.locator('[aria-current="location"]').getAttribute("data-path") === "/messages/0/content", "layout switch must retain selected JSON location");
+    check(await activeLayout.locator('.payload-outline').getByLabel("Payload side").inputValue() === "Before", "layout switch must retain selected side");
+    for (const [side, expected] of [["before", baseline], ["after", event.exact_request.body.decoded.value]]) {
+      const content = await splitTable.locator(`.split-${side} pre`).allTextContents();
+      check(content.join("\n") === JSON.stringify(expected, null, 2), `split ${side} must preserve all payload lines in order`);
+      const numbers = await splitTable.locator(`tbody tr td:nth-child(${side === "before" ? 1 : 4})`).allTextContents();
+      check(JSON.stringify(numbers.filter(Boolean)) === JSON.stringify(content.map((_, i) => String(i + 1))), "split line numbers must remain sequential per side");
+    }
+    const changedRow = splitTable.locator('tr').filter({ hasText: 'Old first message' });
+    const left = await changedRow.locator('.split-before').boundingBox(), right = await changedRow.locator('.split-after').boundingBox();
+    check(right.x > left.x && right.y === left.y, "changed before/after lines must align horizontally");
+    check(await splitTable.locator('.payload-empty').count() > 0, "unequal hunk must retain empty-side cells");
+    await view.getByRole("button", { name: "Next change", exact: true }).click();
+    check(await activeLayout.locator('[aria-current="location"]').getAttribute("data-path") === "/messages/204/content", "split Next must synchronize outline");
+    await activeLayout.locator('.payload-outline').getByLabel("Payload side").selectOption("After");
+    await activeLayout.locator('[data-path="/added"]').click();
+    check((await activeLayout.locator('.payload-target').innerText()).includes('New field'), "split outline must target After content");
+    await view.getByRole("button", { name: "Inline", exact: true }).click();
+    check(await activeLayout.locator('[aria-current="location"]').getAttribute("data-path") === "/added", "inline switch must retain split outline location");
+    check(await activeLayout.locator('.payload-outline').getByLabel("Payload side").inputValue() === "After", "inline switch must retain After side");
+    await view.getByRole("button", { name: "Side-by-side", exact: true }).click();
+    check(detailFetches === fetchesBeforeLayout, "layout switching must never refetch evidence");
+    check(await view.locator('.payload-split').count() === 1, "split DOM must be reused");
+    await view.getByRole("tab", { name: "Live session", exact: true }).click();
+    await view.getByRole("tab", { name: "Request #1", exact: true }).click();
+    check(await splitTable.isVisible(), "request tab must preserve split layout");
+    await view.setViewportSize({ width: 390, height: 844 });
+    check(await view.locator(".request-view").evaluate(el => el.scrollWidth <= el.clientWidth), "split layout must fit narrow viewport");
+    // No predecessor: entire payload on After, blank Before; no fabricated data.
+    event.predecessor_flow_id = null;
+    await view.reload();
+    await view.locator('.inspect-request').click();
+    await view.getByRole("button", { name: "Side-by-side", exact: true }).click();
+    await splitTable.waitFor();
+    check(await splitTable.locator('.split-before pre').count() === 0, "first request Before must stay empty");
+    check((await splitTable.locator('.split-after pre').allTextContents()).join("\n") === JSON.stringify(event.exact_request.body.decoded.value, null, 2), "first request split must preserve complete After");
+    await view.getByRole("button", { name: "Next change", exact: true }).click();
+    check(await activeLayout.locator('[aria-current="location"]').getAttribute("data-path") === "", "first request split navigation must select root");
+    // Identical and removal-heavy payloads retain both complete sides.
+    for (const after of [baseline, {}]) {
+      event.predecessor_flow_id = "baseline";
+      event.exact_request.body.decoded.value = after;
+      await view.reload();
+      await view.locator('.inspect-request').click();
+      await view.getByRole("button", { name: "Side-by-side", exact: true }).click();
+      await splitTable.waitFor();
+      for (const [side, expected] of [["before", baseline], ["after", after]]) {
+        check((await splitTable.locator(`.split-${side} pre`).allTextContents()).join("\n") === JSON.stringify(expected, null, 2), "split must preserve identical/removal-heavy payloads");
+      }
+      if (after === baseline) check(await view.getByRole("button", { name: "Next change", exact: true }).isDisabled(), "identical split must disable change navigation");
+    }
+    return { firstRequest: true, safeLabels: true, lazyChildren: true, pagedArrays: true, visibleJump: true, toolNames: true, responsiveLayout: true, splitReconstruction: true, cachedLayout: true, layoutNavigation: true };
   } finally { await context.close(); }
 }

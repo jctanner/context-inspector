@@ -5,15 +5,17 @@ import unittest
 class RuntimeRunnerTests(unittest.TestCase):
     def test_persists_claude_user_configuration_inside_project_state(self) -> None:
         runner = (Path(__file__).parents[1] / "runtime" / "run.sh").read_text()
-        self.assertIn('claude_state_dir="${project_dir}/.state/claude"', runner)
+        self.assertIn('claude_state_dir="${project_dir}/container/home/evaluator"', runner)
+        self.assertIn('claude_config_dir="${claude_state_dir}/.claude"', runner)
         self.assertNotIn("XDG_STATE_HOME", runner)
         self.assertNotIn("${HOME}/.local/state", runner)
         self.assertNotIn("CONTEXT_INSPECTOR_CLAUDE_STATE_DIR", runner)
         self.assertIn('chmod 700 "${claude_state_dir}" "${claude_config_dir}"', runner)
         self.assertIn('if [[ ! -s ${claude_config_file} ]]', runner)
         self.assertIn("printf '{}\\n'", runner)
-        self.assertIn('${claude_config_dir}:/home/runner/.claude:rw,Z', runner)
-        self.assertIn('${claude_config_file}:/home/runner/.claude.json:rw,Z', runner)
+        self.assertIn('${claude_config_dir}:/home/evaluator/.claude:rw,Z', runner)
+        self.assertIn('${claude_config_file}:/home/evaluator/.claude.json:rw,Z', runner)
+        self.assertIn('${PWD}:/workspace:rw,Z', runner)
         self.assertEqual(runner.count("--userns=keep-id:uid=1000,gid=1000"), 2)
         self.assertNotIn("--userns=keep-id ", runner)
 
@@ -42,6 +44,7 @@ class RuntimeRunnerTests(unittest.TestCase):
         self.assertLess(bootstrap.index("update-ca-certificates >/dev/null"), bootstrap.index("exec setpriv"))
         self.assertIn("--reuid=1000 --regid=1000 --clear-groups --no-new-privs", bootstrap)
         self.assertIn('"$@"', bootstrap)
+        self.assertIn('${agent_home} != /home/evaluator', bootstrap)
 
 
 if __name__ == "__main__":

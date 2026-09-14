@@ -26,7 +26,7 @@ class ModelTests(unittest.TestCase):
 class WorkspaceTests(unittest.TestCase):
     def test_defaults_are_project_local(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(Settings().workspace, PROJECT_ROOT / "workspace")
+            self.assertEqual(Settings().workspace, PROJECT_ROOT / "container" / "workspace")
             self.assertEqual(Settings.from_environment().workspace, DEFAULT_WORKSPACE)
             self.assertNotEqual(DEFAULT_WORKSPACE, PROJECT_ROOT.parent)
 

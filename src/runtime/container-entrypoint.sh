@@ -30,6 +30,10 @@ if [[ ${agent_uid} != 1000 || ${agent_gid} != 1000 || -z ${agent_home} ]]; then
     echo "ERROR: agent image must provide a UID/GID 1000 account with a home directory" >&2
     exit 1
 fi
+if [[ ${agent_home} != /home/evaluator ]]; then
+    echo "ERROR: agent image home must be /home/evaluator to match the persistent mounts" >&2
+    exit 1
+fi
 
 # Only the container writable layer is changed. Keep all existing system roots.
 install -m 0644 /mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/context-inspector-proxy.crt

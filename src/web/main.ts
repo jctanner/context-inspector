@@ -1,5 +1,6 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { MemoryView } from "./memory";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { disclosure, readableBlock, readableChange, readableValue } from "./readable";
@@ -67,6 +68,21 @@ terminal.loadAddon(fit);
 terminal.open(terminalElement);
 
 let sessionId: string | null = null;
+const memoryView = new MemoryView(() => sessionId);
+const sessionSection = document.querySelector<HTMLElement>("#session-section")!;
+const memorySection = document.querySelector<HTMLElement>("#memory-section")!;
+const navSession = document.querySelector<HTMLButtonElement>("#nav-session")!;
+const navMemory = document.querySelector<HTMLButtonElement>("#nav-memory")!;
+navSession.onclick = () => {
+  sessionSection.hidden = false; memorySection.hidden = true;
+  navSession.setAttribute("aria-current", "page"); navMemory.removeAttribute("aria-current");
+  requestTabs.resume();
+};
+navMemory.onclick = () => {
+  sessionSection.hidden = true; memorySection.hidden = false;
+  navMemory.setAttribute("aria-current", "page"); navSession.removeAttribute("aria-current");
+  memoryView.show();
+};
 let socket: WebSocket | null = null;
 let flowSocket: WebSocket | null = null;
 let flowCount = 0;
@@ -205,6 +221,7 @@ function forgetSession(): void {
   if (sessionId !== null) localStorage.removeItem(`${CONTEXT_CURSOR_PREFIX}${sessionId}`);
   localStorage.removeItem(SESSION_STORAGE_KEY);
   sessionId = null;
+  memoryView.sessionChanged();
   startButton.disabled = false;
   startButton.textContent = "Start Claude";
   stopButton.disabled = true;
@@ -272,32 +289,6 @@ function addEvidence(details: HTMLElement, title: string, value: unknown, eviden
   section.append(output);
   details.append(section);
   return section;
-}
-
-function lazyDetails(parent: HTMLElement, title: string, url: string, render: (detail: any) => void): void {
-  const details = disclosure(parent, title, "lazy-evidence");
-  const status = textElement("p", "comparison-label", "");
-  const retry = document.createElement("button");
-  retry.textContent = "Retry loading details";
-  retry.hidden = true;
-  details.append(status, retry);
-  let loading = false;
-  let loaded = false;
-  const owner = sessionId;
-  const load = async () => {
-    if (!details.open || loading || loaded) return;
-    loading = true; retry.hidden = true; status.textContent = "Loading captured details…";
-    try {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error("Unavailable");
-      const detail = await response.json();
-      if (sessionId !== owner || !parent.isConnected) return;
-      render(detail); loaded = true; status.remove();
-    } catch { status.textContent = "Could not load details. Your summary is still available."; retry.hidden = false; }
-    finally { loading = false; }
-  };
-  details.addEventListener("toggle", () => { void load(); });
-  retry.addEventListener("click", () => { void load(); });
 }
 
 function renderCompactBatch(events: Array<ContextDiff | ContextResponse | ContextUsage>, mode: "initial" | "older" | "live", total: number, next: number | null, usage?: ContextUsage): void {
@@ -517,9 +508,10 @@ function appendRequest(item: HTMLLIElement, diff: ContextDiff): void {
         preview.className = "group-reply";
         preview.dataset.flowId = response.dataset.flowId;
         preview.append(textElement("h3", "model-response-title", `Request ${lastRequest.number} · Model reply`));
-        preview.append(textElement("p", "comparison-label", "Reconstructed from captured response · full evidence inside request"));
+        preview.append(textElement("p", "comparison-label", "Reconstructed from captured response · open response for full evidence"));
+        responseShortcut(response, preview);
         for (const text of response.querySelectorAll(":scope > .readable-text")) preview.append(text.cloneNode(true));
-        if (!preview.querySelector(".readable-text")) preview.append(textElement("p", "", "Non-text response available inside request"));
+        if (!preview.querySelector(".readable-text")) preview.append(textElement("p", "", "Non-text response available in response tab"));
         group.append(preview);
       }
     }
@@ -533,25 +525,22 @@ function appendRequest(item: HTMLLIElement, diff: ContextDiff): void {
   }
 }
 
-function renderContextResponse(response: ContextResponse): void {
-  const item = requestRows.get(response.flow_id);
-  if (!item) return;
-  item.querySelector(".response-awaiting")?.remove();
-  item.querySelector(".model-response")?.remove();
+function responseSection(response: ContextResponse, full = false): HTMLElement {
   const section = document.createElement("section");
   section.className = "model-response";
   section.dataset.flowId = response.flow_id;
   section.append(textElement("h3", "model-response-title", "Model reply"));
   section.append(textElement("p", "comparison-label", "Reconstructed from captured response"));
-  // Put conversational text first; preserve other block types separately.
-  for (const block of response.response.content_blocks.filter(block => block.type === "text")) readableValue(section, block, false);
-  for (const block of response.response.content_blocks.filter(block => block.type !== "text")) {
+  // Retain captured block order; non-text content has its own disclosure.
+  for (const block of response.response.content_blocks) {
+    if (block.type === "text") { readableValue(section, block, false); continue; }
     const content = disclosure(section, block.type === "thinking" ? "Thinking" : `Response block · ${String(block.type ?? "unknown")}`);
+    if (full && block.type === "tool_use") content.open = true;
+    if (full && typeof block.id === "string") content.append(textElement("p", "comparison-label", `Block ID: ${block.id}`));
     readableValue(content, block);
   }
-  if (response.detail_url) {
-    lazyDetails(section, "Read full reply & response evidence", response.detail_url, detail => renderContextResponse(detail));
-  } else {
+  if (!full) return section;
+  section.append(textElement("p", "response-identifiers", `Flow: ${response.flow_id} · Message: ${response.response.message_id ?? "unavailable"}`));
   const evidence = disclosure(section, "Response evidence", "response-evidence");
   evidence.append(textElement("p", "response-provenance", "Response only · semantic blocks reconstructed from the completed captured SSE stream, correlated by exact flow_id."));
   evidence.append(textElement("p", `response-purpose confidence-${response.purpose.confidence}`, `Purpose: ${response.purpose.classification.replaceAll("_", " ")} · ${response.purpose.confidence} confidence · ${response.purpose.evidence.join(", ")}`));
@@ -566,7 +555,37 @@ function renderContextResponse(response: ContextResponse): void {
   const exactWire = { ...response.exact_response, body: { wire: exactBody?.wire } };
   addEvidence(evidence, "Exact captured response metadata and wire bytes", exactWire, "exact");
   addEvidence(evidence, "Losslessly decoded response SSE", { decoded: exactBody?.decoded, decode_status: exactBody?.decode_status }, "interpreted");
-  }
+  return section;
+}
+
+function responseShortcut(source: HTMLElement, target: HTMLElement): void {
+  const original = source.querySelector<HTMLButtonElement>(".inspect-response");
+  if (!original) return;
+  const shortcut = original.cloneNode(true) as HTMLButtonElement;
+  shortcut.onclick = () => original.click(); target.append(shortcut);
+}
+
+function renderContextResponse(response: ContextResponse): void {
+  const item = requestRows.get(response.flow_id);
+  if (!item) return;
+  item.querySelector(".response-awaiting")?.remove();
+  item.querySelector(".model-response")?.remove();
+  const section = responseSection(response);
+  const inspect = document.createElement("button"); inspect.type = "button"; inspect.className = "inspect-response secondary-button";
+  inspect.textContent = "Read full reply & response evidence";
+  const owner = sessionId, number = item.dataset.order!;
+  inspect.onclick = () => requestTabs.open(`${owner}:${response.flow_id}`, number, async (panel, signal) => {
+    let detail = response;
+    if (response.detail_url) {
+      const result = await fetch(response.detail_url, { cache: "no-store", signal });
+      if (!result.ok) throw new Error("Response unavailable");
+      detail = await result.json();
+    }
+    if (signal.aborted) return;
+    const content = responseSection(detail, true); content.classList.add("response-detail");
+    panel.replaceChildren(content);
+  }, "Response");
+  section.append(inspect);
   item.append(section);
   const group = item.closest(".repeat-group");
   if (group) {
@@ -575,10 +594,11 @@ function renderContextResponse(response: ContextResponse): void {
     preview.className = "group-reply";
     preview.dataset.flowId = response.flow_id;
     preview.append(textElement("h3", "model-response-title", `${item.querySelector('.event-sequence')!.textContent} · Model reply`));
-    preview.append(textElement("p", "comparison-label", "Reconstructed from captured response · full evidence inside request"));
+    preview.append(textElement("p", "comparison-label", "Reconstructed from captured response · open response for full evidence"));
+    responseShortcut(section, preview);
     const texts = response.response.content_blocks.filter(block => block.type === "text");
     texts.forEach(block => readableValue(preview, block, false));
-    if (!texts.length) preview.append(textElement("p", "", "Non-text response available inside request"));
+    if (!texts.length) preview.append(textElement("p", "", "Non-text response available in response tab"));
     for (const existing of group.querySelectorAll<HTMLElement>(":scope > [data-flow-id]")) {
       if (existing.dataset.flowId === response.flow_id) existing.remove();
     }
@@ -777,6 +797,7 @@ function clearContextHistory(): void {
 
 function connectSession(id: string): void {
   sessionId = id;
+  memoryView.sessionChanged();
   localStorage.setItem(SESSION_STORAGE_KEY, id);
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   startContextConnection(id, scheme);
@@ -791,7 +812,7 @@ function connectSession(id: string): void {
     stopButton.disabled = false;
     setStatus("Claude connected", "active");
     sendResize();
-    terminal.focus();
+    if (requestTabs.isLive) terminal.focus();
   });
   socket.addEventListener("message", (event) => {
     if (event.data instanceof ArrayBuffer) {

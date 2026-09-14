@@ -21,6 +21,8 @@ class GitignoreTests(unittest.TestCase):
             "captures/traffic.jsonl", "state/runtime/adc.json", "flows-session.jsonl",
             ".mitmproxy/mitmproxy-ca.pem", "adc.json", "server.log",
             "workspace/private.txt", "workspace/project/.env",
+            "container/home/evaluator/.claude/.credentials.json", "container/home/evaluator/.claude.json",
+            "container/home/evaluator/.claude/projects/-workspace/memory/MEMORY.md", "container/workspace/private.txt",
             ".venv/bin/python", "src/server/__pycache__/app.cpython-314.pyc",
             "context_inspector.egg-info/PKG-INFO", "build/lib/app.py",
             ".pytest_cache/cache", ".coverage", "htmlcov/index.html",
@@ -33,7 +35,7 @@ class GitignoreTests(unittest.TestCase):
 
     def test_source_examples_lockfiles_and_docs_stay_visible(self):
         paths = [
-            ".gitignore", ".env.example", "workspace/.gitignore", "pyproject.toml",
+            ".gitignore", ".env.example", "pyproject.toml",
             "uv.lock", "src/web/package-lock.json", "src/web/package.json",
             "src/server/app.py", "src/tests/test_gitignore.py",
             "src/tests/fixtures/sanitized.jsonl", "src/web/request-tabs.ts",

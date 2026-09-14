@@ -37,7 +37,7 @@ class ReadmeArchitectureTests(unittest.TestCase):
             "exit trap requests proxy removal",
             "model HTTPS through configured proxy",
             "Versioned live events<br/>events.jsonl",
-            "Persistent Claude state<br/>.state/claude",
+            "Persistent Claude state<br/>container/home/evaluator",
             "generated CA trust mount",
             "read-only ADC mount",
         ):

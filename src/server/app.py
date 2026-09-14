@@ -19,6 +19,7 @@ from .terminal import TerminalExit, TerminalManager
 from .flows import FlowEventStream
 from .context import ContextEventStream
 from .context_index import ContextIndex
+from .memory import get_memory
 
 
 class CreateSessionRequest(BaseModel):
@@ -197,6 +198,28 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         await index.ready.wait()
         response.headers["Cache-Control"] = "no-store"
         return index.snapshot(before=before, after_sequence=after_sequence, limit=limit)
+
+    async def memory_result(session_id: str, response: Response, path: str | None = None):
+        response.headers["Cache-Control"] = "no-store"
+        active = manager.active()
+        if active is None or active.id != session_id:
+            raise HTTPException(404, "No active Claude session", headers={"Cache-Control": "no-store"})
+        try:
+            result = await asyncio.to_thread(get_memory, session_id, path)
+        except HTTPException as exc:
+            exc.headers = {"Cache-Control": "no-store"}
+            raise
+        if manager.active() is not active:
+            raise HTTPException(409, "Active session changed; refresh memory", headers={"Cache-Control": "no-store"})
+        return result
+
+    @app.get("/api/sessions/{session_id}/memory")
+    async def memory_list(session_id: str, response: Response):
+        return await memory_result(session_id, response)
+
+    @app.get("/api/sessions/{session_id}/memory/file")
+    async def memory_file(session_id: str, response: Response, path: str = Query(max_length=2048)):
+        return await memory_result(session_id, response, path)
 
     @app.get("/api/sessions/{session_id}/context-details/{flow_id}/{part}")
     async def context_details(session_id: str, flow_id: str, part: str, response: Response):

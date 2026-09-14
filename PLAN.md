@@ -25,6 +25,12 @@ requests and responses captured by the mitmproxy sidecar.
 
 ## Deployment note
 
+Current handoff: user stopped the stack. Tasks 053/054 are built and tested;
+the next normal launch uses container/workspace and container/home/evaluator
+mounts and exposes read-only Memory navigation. The workspace was moved intact;
+old .state/claude remains as a backup. No test servers are left running. Older
+deployment notes below describe previous runs, not the current mount defaults.
+
 User restarted and began a new conversation on 2026-09-14. Operation-aware
 baselines are confirmed live: generation comparisons skip token-count requests.
 Old-session read-only browsing is not implemented.
@@ -53,6 +59,8 @@ The current Claude session has been preserved.
 - [Browser requests a missing favicon](docs/bugs/open/missing-favicon.md)
 
 ## Decisions
+
+- [ADR-0023 — Read-only mirrored memory](docs/decisions/ADR-0023-read-only-memory.md)
 
 - [ADR-0022 — Payload outline](docs/decisions/ADR-0022-payload-outline.md)
 
@@ -105,6 +113,20 @@ The current Claude session has been preserved.
 - [Request-stream identity investigation](docs/notes/request-stream-identity-investigation.md)
 
 ## Completed setup
+
+- [Response evidence tabs](docs/tasks/done/055-response-tabs.md) — independent
+  closable Response #N views, lazy full replies/tool calls/exact evidence; refresh to load.
+
+- [Container filesystem mirror](docs/tasks/done/054-container-mirror.md) — migrated
+  workspace, corrected home mounts, direct local memory reads; ready for startup.
+- [Read-only memory browser](docs/tasks/done/053-read-only-memory.md) — Session /
+  Memory navigation, safe source viewer, refresh; 86 Python tests and five browser fixtures pass.
+
+- [Split header layout](docs/tasks/done/052-split-header-layout.md) — grouped
+  headings and compact gutters; no text overlap at tested desktop/mobile widths.
+
+- [Side-by-side payload diff](docs/tasks/done/051-split-payload-diff.md) — toggle
+  between Inline and Before/After columns; outline/navigation work in both.
 
 - [Synchronized change navigation](docs/tasks/done/050-sync-change-outline.md) —
   Previous/Next follows the outline, reveals nested entries and selects the correct side.

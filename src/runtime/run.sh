@@ -9,8 +9,8 @@ session_slug=${session_id//[^a-zA-Z0-9_.-]/-}
 application_state_dir=${CONTEXT_INSPECTOR_STATE_DIR:-"/tmp/context-inspector-$(id -u)"}
 state_dir=${CONTEXT_INSPECTOR_RUNTIME_STATE_DIR:-"${application_state_dir}/runtime"}
 capture_dir=${CONTEXT_INSPECTOR_CAPTURE_DIR:-"${application_state_dir}/captures"}
-claude_state_dir="${project_dir}/.state/claude"
-claude_config_dir="${claude_state_dir}/config"
+claude_state_dir="${project_dir}/container/home/evaluator"
+claude_config_dir="${claude_state_dir}/.claude"
 claude_config_file="${claude_state_dir}/.claude.json"
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-${session_slug}"
 capture_name="flows-${run_id}.jsonl"
@@ -115,8 +115,8 @@ adc_path=${GOOGLE_APPLICATION_CREDENTIALS:-"${HOME}/.config/gcloud/application_d
 mounts=(
     --volume "${state_dir}/mitmproxy/mitmproxy-ca-cert.pem:/mitmproxy-ca-cert.pem:ro,Z"
     --volume "${PWD}:/workspace:rw,Z"
-    --volume "${claude_config_dir}:/home/runner/.claude:rw,Z"
-    --volume "${claude_config_file}:/home/runner/.claude.json:rw,Z"
+    --volume "${claude_config_dir}:/home/evaluator/.claude:rw,Z"
+    --volume "${claude_config_file}:/home/evaluator/.claude.json:rw,Z"
 )
 bootstrap_mount=(--volume "${runtime_dir}/container-entrypoint.sh:/context-inspector-entrypoint.sh:ro,Z")
 if [[ -f ${adc_path} ]]; then

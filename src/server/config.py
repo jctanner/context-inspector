@@ -10,7 +10,9 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_WORKSPACE = PROJECT_ROOT / "workspace"
+CONTAINER_ROOT = PROJECT_ROOT / "container"
+CLAUDE_HOME = CONTAINER_ROOT / "home" / "evaluator"
+DEFAULT_WORKSPACE = CONTAINER_ROOT / "workspace"
 DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_RUNNER = PROJECT_ROOT / "src" / "runtime" / "run.sh"
 DEFAULT_STATE_DIR = Path(tempfile.gettempdir()) / f"context-inspector-{os.getuid()}"
@@ -54,6 +56,7 @@ class Settings:
         if self.host not in {"0.0.0.0", "127.0.0.1", "::1", "localhost"}:
             raise ValueError("Context Inspector host must be 0.0.0.0 or a loopback address")
         if self.workspace == DEFAULT_WORKSPACE:
+            self.workspace.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             self.workspace.mkdir(mode=0o700, exist_ok=True)
         if not self.workspace.is_dir():
             raise ValueError(f"Workspace does not exist: {self.workspace}")

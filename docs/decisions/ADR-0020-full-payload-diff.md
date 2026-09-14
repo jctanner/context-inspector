@@ -25,6 +25,13 @@ an empty request. Only a genuinely absent predecessor means all additions.
 
 ## Consequences
 
+Task 051 adds Inline / Side-by-side layout controls (Inline remains default).
+Cache a second DOM layout on demand using the same diff lines; align each hunk's
+removals/additions by order with blank cells for unequal lengths. This is visual
+alignment, not semantic block matching. Each layout has side-specific outline
+targets; transfer the selected side/line when switching and retain hunk position.
+Both layouts share counts, provenance and the original bounded-diff fallback.
+
 No backend restart, new dependencies, live sockets, or persisted captured content.
 Repeated toggles reuse the view. Full payloads consume memory proportional to
 their size and open tabs; no block expansion is required. Very long JSON strings

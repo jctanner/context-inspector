@@ -28,7 +28,13 @@ export class RequestTabs {
     });
   }
 
-  get isLive(): boolean { return this.active === null; }
+  get isLive(): boolean { return this.active === null && !document.querySelector<HTMLElement>("#session-section")!.hidden; }
+
+  resume(): void {
+    if (this.active === null) {
+      this.unread = 0; this.live.textContent = "Live session"; this.onLive();
+    }
+  }
 
   activity(): void {
     if (!this.isLive) this.live.textContent = `Live session (${++this.unread} new)`;
@@ -70,29 +76,31 @@ export class RequestTabs {
     if (wasActive) this.select(keys[index + 1] ?? keys[index - 1] ?? null);
   }
 
-  open(key: string, number: string, load: (panel: HTMLElement, signal: AbortSignal) => Promise<void>): void {
+  open(key: string, number: string, load: (panel: HTMLElement, signal: AbortSignal) => Promise<void>, kind: "Request" | "Response" = "Request"): void {
+    key = `${kind}:${key}`;
     if (this.entries.has(key)) { this.select(key); return; }
     const id = `request-view-${++this.serial}`;
     const wrapper = document.createElement("span"); wrapper.className = "request-tab"; wrapper.setAttribute("role", "presentation");
-    const button = document.createElement("button"); button.type = "button"; button.textContent = `Request #${number}`;
+    const title = `${kind} #${number}`;
+    const button = document.createElement("button"); button.type = "button"; button.textContent = title;
     button.id = `${id}-tab`; button.setAttribute("role", "tab"); button.setAttribute("aria-controls", id);
     button.onclick = () => this.select(key);
     const close = document.createElement("button"); close.type = "button"; close.textContent = "×"; close.className = "tab-close";
-    close.setAttribute("aria-label", `Close Request #${number}`); close.title = `Close Request #${number}`;
+    close.setAttribute("aria-label", `Close ${title}`); close.title = `Close ${title}`;
     close.onclick = () => { const focused = wrapper.contains(document.activeElement); this.close(key); if (focused) (this.active === null ? this.live : this.entries.get(this.active)!.button).focus(); };
     wrapper.append(button, close); this.bar.append(wrapper);
     const panel = document.createElement("section"); panel.id = id; panel.className = "request-view";
     panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", button.id); panel.tabIndex = 0;
-    const heading = document.createElement("h2"); heading.textContent = `Request #${number}`;
+    const heading = document.createElement("h2"); heading.textContent = title;
     const content = document.createElement("div"); panel.append(heading, content); this.views.append(panel);
     const controller = new AbortController(); this.entries.set(key, { button, wrapper, panel, controller });
     this.select(key);
     const run = async () => {
-      content.textContent = "Loading request evidence…";
+      content.textContent = `Loading ${kind.toLowerCase()} evidence…`;
       try { await load(content, controller.signal); }
       catch {
         if (controller.signal.aborted) return;
-        content.textContent = "Request evidence unavailable. The session may have ended. ";
+        content.textContent = `${kind} evidence unavailable. The session may have ended. `;
         const retry = document.createElement("button"); retry.textContent = "Retry"; retry.onclick = () => { void run(); }; content.append(retry);
       }
     };

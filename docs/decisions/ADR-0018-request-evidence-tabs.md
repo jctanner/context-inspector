@@ -11,6 +11,11 @@ full-width in-app request tabs with browser-like close buttons.
 
 ## Decision
 
+Task 055 extends the tab manager to Response #N views with kind-specific keys.
+Keep request and response tabs independently closable; fetch a response only
+when inspected and render it without updating live-card state. Retain decoded
+versus exact-wire provenance. This is a response viewer, not a response diff.
+
 Keep Live session pinned; hide (never recreate) its DOM while a request tab is
 selected. Use session ID plus flow ID for tab identity and the displayed request
 number for labels. Fetch summary evidence on first open, or reuse full legacy

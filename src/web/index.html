@@ -17,7 +17,12 @@
         <button id="stop" type="button" disabled>Stop</button>
       </div>
     </header>
-    <div id="view-tabs" class="view-tabs" role="tablist" aria-label="Session and request views">
+    <nav class="primary-nav" aria-label="Main navigation">
+      <button id="nav-session" type="button" aria-current="page" aria-controls="session-section">Session</button>
+      <button id="nav-memory" type="button" aria-controls="memory-section">Memory</button>
+    </nav>
+    <section id="session-section" aria-label="Session workspace">
+    <div id="view-tabs" class="view-tabs" role="tablist" aria-label="Session, request and response views">
       <button id="live-tab" type="button" role="tab" aria-selected="true" aria-controls="workspace">Live session</button>
     </div>
     <main id="workspace" class="workspace" role="tabpanel" aria-labelledby="live-tab">
@@ -59,6 +64,25 @@
       </section>
     </main>
     <div id="request-views" hidden></div>
+    </section>
+    <section id="memory-section" aria-labelledby="memory-title" hidden>
+      <header class="memory-header">
+        <div><h2 id="memory-title">Claude memory</h2>
+          <p>Read-only files from container/home/evaluator/.claude, mounted as Claude’s home state. Not your host ~/.claude.</p>
+          <p>Project auto-memory Markdown and ~/.claude/CLAUDE.md only. Current files are not proof of what the model loaded.</p>
+        </div>
+        <button id="memory-refresh" type="button" class="secondary-button">Refresh memory</button>
+      </header>
+      <p id="memory-status" role="status">Open Memory to load files.</p>
+      <div class="memory-layout">
+        <nav id="memory-tree" aria-label="Memory files"></nav>
+        <article class="memory-viewer" aria-labelledby="memory-file-title">
+          <h3 id="memory-file-title">Select a memory file</h3>
+          <p id="memory-file-meta" role="status"></p>
+          <pre id="memory-content" tabindex="0" aria-label="Read-only memory source"></pre>
+        </article>
+      </div>
+    </section>
     <script type="module" src="/main.ts"></script>
   </body>
 </html>

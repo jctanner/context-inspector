@@ -44,7 +44,7 @@ flowchart LR
 
     subgraph LocalState[Local state]
         Workspace[Selected workspace]
-        ClaudeState[Persistent Claude state<br/>.state/claude]
+        ClaudeState[Persistent Claude state<br/>container/home/evaluator]
         Events[Versioned live events<br/>events.jsonl]
         Runtime[Private runtime material<br/>CA, ADC copy, logs, captures]
     end
@@ -135,7 +135,7 @@ expanded cards remain local to each browser. Restarting the Context Inspector
 server still shuts down all server-owned sessions.
 
 Claude's working directory `/workspace` is a read/write bind mount of this
-project's `./workspace` directory, created automatically if missing. It does
+project's `./container/workspace` directory, created automatically if missing. It does
 not mount the parent directory or sibling projects by default. Workspace contents
 are ignored by Git. An explicit `CONTEXT_INSPECTOR_WORKSPACE` can select another
 existing directory. Changing this setting requires restarting the server and
@@ -165,12 +165,19 @@ and replays missed updates without duplicating cards; the terminal connection
 status is independent.
 
 With the summary API available, refresh loads the latest 25 request summaries
-newest first. **Load older requests** retrieves earlier pages. Expand **Inspect
+newest first. **Load older requests** retrieves earlier pages. Click **Inspect
 changes & request evidence** or **Read full reply & response evidence** to fetch
 the complete per-request content. Request inspection opens a full-width in-app
 `Request #N` tab defaulting to the full payload diff. Its × button closes it; Live session
 stays pinned and connected, with a new-request badge during background activity.
 Opening the same request selects its existing tab and preserves the selected view.
+**Read full reply & response evidence** opens a separate, closable `Response #N`
+tab with the complete reply and tool calls, plus thinking and exact-response
+evidence disclosures. Request and response tabs can coexist for the same call.
+Reopening a response selects its existing tab without refetching; closing a
+loading tab cancels its fetch. Response inspection is also available directly
+from collapsed matching-request groups. It does not alter the live summary or
+its token accounting.
 The default is a complete GitHub-style unified diff: red/green lines, before/after line numbers,
 and Previous/Next change navigation. It compares pretty-printed decoded JSON
 bodies with the recorded baseline; unchanged lines remain visible without
@@ -187,6 +194,12 @@ Large branches load 100 outline entries at a time; no diff lines are hidden.
 On narrow screens the outline sits above the diff.
 **Previous/Next change** also selects and reveals the corresponding outline
 entry, choosing Before for a removed row and After for an added row.
+Use **Side-by-side** for aligned Before/After columns, or **Inline** to return
+to the default unified diff. Both show every line and share the same baseline
+and change counts. Blank cells mark lines missing from one side; pairing lines
+within an edit region is visual alignment, not semantic message matching.
+Switching retains the selected outline location and does not refetch evidence.
+The layout choice stays with the open request tab until it is closed or refreshed.
 Arrow keys select tabs and
 Delete closes a selected request tab. Tabs are local to this page and reset on
 refresh; closed requests can be reopened from their cards. Initial previews are not substitutes for exact
@@ -205,10 +218,34 @@ The numerator comes from wire-observed response usage; the application does
 not estimate tokens from request bytes.
 
 Claude's private user configuration persists across disposable agent
-containers under this project's ignored `.state/claude` directory. The runner
+containers under this project's ignored `container/home/evaluator` directory. The runner
 does not write this state outside the project. It may contain sensitive account,
 project, history, or preference metadata and must remain uncommitted.
 Project-local `.claude/` instructions remain separate.
+
+The project-local mirror maps directly to container paths:
+
+| Project path | Container path |
+| --- | --- |
+| `container/workspace/` | `/workspace/` |
+| `container/home/evaluator/.claude/` | `/home/evaluator/.claude/` |
+| `container/home/evaluator/.claude.json` | `/home/evaluator/.claude.json` |
+
+**Session / Memory** navigation keeps request tabs in Session. Memory provides
+a read-only file tree and Markdown source viewer with path, size, modified time
+and **Refresh memory**. It reads directly from the local mirror—no container API
+calls. Only `CLAUDE.md` and `projects/*/memory/**/*.md` are exposed; credentials,
+settings and transcripts are excluded. Symlinks/hardlinks and nonregular files
+are rejected; reads are limited to 1 MiB and listings to 500 files/5,000 entries.
+No create, edit, rename or delete operations exist. Files are current disk
+snapshots, not evidence of which memory the model has loaded. An active session
+is required by the API. Switching sections keeps existing live sockets connected.
+
+When upgrading from the old layout, stop the stack only **after** backing up
+the live container's actual `/home/evaluator/.claude` and `.claude.json`: the
+old `/home/runner` mount did not preserve that home. Move `workspace/` to
+`container/workspace/` only if the destination does not exist. Keep old `.state`
+backups until migration is verified; do not merge/overwrite state blindly.
 
 The runner installs the capture proxy's public CA into each agent/probe
 container's system trust store before starting its command. Ordinary Git and
@@ -217,7 +254,7 @@ Only container-local trust files change; the host trust store is untouched.
 Startup briefly runs as container root, then drops to UID/GID 1000 and restores
 the agent account's home before executing Claude. Node retains its extra-CA
 setting. Custom agent images must include `update-ca-certificates`, `setpriv`,
-`getent`, `install`, and a UID/GID 1000 account. Other tools using private CA
+`getent`, `install`, and a UID/GID 1000 account with home `/home/evaluator`. Other tools using private CA
 bundles may require separate configuration.
 
 For a harmless terminal-only test that does not start Podman or Claude, set

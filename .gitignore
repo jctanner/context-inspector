@@ -10,6 +10,7 @@ adc.json
 application_default_credentials.json
 
 # Sensitive runtime state and captured model traffic
+/container/
 .state/
 state/
 captures/

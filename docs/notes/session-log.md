@@ -1,5 +1,54 @@
 # Session Log
 
+## 2026-09-14 — Response evidence tabs
+
+- Task 055 extends existing closable evidence tabs with Response #N. Current
+  response hydration replaces live card content; separate pure rendering keeps
+  tab loading from changing live cards, usage accounting or request numbering.
+- Complete: shared kind-specific tabs, full ordered response blocks and tool IDs,
+  provenance/exact evidence, shortcuts on collapsed repeat groups. Build, 13
+  Python checks and response/fast-replay/readability/Memory browser fixtures pass.
+  Confirmed fetch cancellation on close; Playwright closed. No session restart.
+## 2026-09-14 — Project-local container mirror
+
+- User approved storage redesign: container/home/evaluator/.claude and
+  container/workspace. Task 054 replaces Podman-based browsing with direct,
+  allowlisted filesystem reads. Existing wrong-home mount recorded as a bug.
+- Initial migration check: previous happy_franklin container no longer exists;
+  resolving current session before any state migration. Workspace remains intact.
+- User confirmed stack was killed; requested handoff rather than automatic
+  restart. Moved workspace intact into container/workspace, copied remaining
+  local config (empty memory directory), and retained old .state as backup.
+  Previous ephemeral evaluator-home files were already unavailable.
+- Removed memory container discovery/exec code. Direct local reader enforces
+  allowlist/descriptor containment and read limits; no mutation API.
+- Build, 86 Python tests and five browser fixtures pass. Network-disabled mount
+  probe verified evaluator home and workspace. HTTP cat-only fixture confirmed
+  no-store listing and 405/400 mutation/path rejection. All test processes closed.
+## 2026-09-14 — Read-only memory browser
+
+- Task 053 and ADR-0023: top-level navigation plus container-only allowlisted
+  Markdown viewing. Confirmed UID 1000 home /home/evaluator and project memory
+  directory; no file contents exported. No editing or other CRUD scope.
+- New backend needs restart; live session will remain untouched during testing.
+## 2026-09-14 — Split header overlap
+
+- Task 052: Change overflowed its 32px desktop / 16px mobile gutter. Inline
+  nth-child width rules also leaked into the split header at narrow widths.
+- Use explicit colgroups, grouped Before/After headings and compact gutter
+  labels with accessible names. No data, navigation or baseline changes.
+- Completed: build, whitespace and split/fast-replay browser tests pass. Text
+  containment and equal half widths verified at 1280, 901, 768, 390 and 320px.
+  Playwright closed; refresh loads the corrected header.
+## 2026-09-14 — Side-by-side payload diff
+
+- Task 051 adds an optional split layout from the existing unified diff result.
+  Each side retains its line numbers and outline targets; unequal hunks get
+  blank cells. No new baseline selection or backend calls.
+- Completed: accessible cached layouts, location transfer and tab-local choice.
+  Build and all four browser fixtures pass, including exact split reconstruction,
+  empty/identical/removal-heavy payloads, outline/change navigation and mobile.
+  Playwright closed; refresh loads the frontend without a server restart.
 ## 2026-09-14 — Synchronize change navigation
 
 - Task 050 fixes independently maintained outline and change-navigation state.
