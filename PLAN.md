@@ -25,6 +25,10 @@ requests and responses captured by the mitmproxy sidecar.
 
 ## Deployment note
 
+User restarted and began a new conversation on 2026-09-14. Operation-aware
+baselines are confirmed live: generation comparisons skip token-count requests.
+Old-session read-only browsing is not implemented.
+
 The default model is now `claude-haiku-4-5` in code (task 038); it takes effect
 for new sessions after the server restarts. Existing sessions are unchanged.
 
@@ -38,6 +42,9 @@ The current Claude session has been preserved.
 
 ## Open bugs
 
+- [Unrelated request block pairing](docs/bugs/open/unrelated-request-block-pairing.md) —
+  chronological fallback can present unrelated same-position blocks as edits.
+
 - [Overbroad workspace mount](docs/bugs/open/overbroad-workspace.md) — fixed in code,
   awaiting deployment.
 
@@ -46,6 +53,14 @@ The current Claude session has been preserved.
 - [Browser requests a missing favicon](docs/bugs/open/missing-favicon.md)
 
 ## Decisions
+
+- [ADR-0022 — Payload outline](docs/decisions/ADR-0022-payload-outline.md)
+
+- [ADR-0021 — Operation-aware baselines](docs/decisions/ADR-0021-operation-aware-baselines.md)
+
+- [ADR-0020 — Full payload diff](docs/decisions/ADR-0020-full-payload-diff.md)
+
+- [ADR-0019 — Container system trust](docs/decisions/ADR-0019-container-system-trust.md)
 
 - [ADR-0018 — In-app request evidence tabs](docs/decisions/ADR-0018-request-evidence-tabs.md)
 
@@ -81,12 +96,46 @@ The current Claude session has been preserved.
 
 ## Implementation notes
 
+- [Transcript correlation experiment](docs/notes/transcript-correlation-experiment.md) —
+  exact joins demonstrated; token counting explains request 130's bad baseline.
+
 - [Validated Podman + mitmproxy runtime recipe](docs/notes/validated-podman-mitm-runtime.md)
 - [Live event protocol v1](docs/notes/live-event-protocol-v1.md)
 - [Structural context diff model](docs/notes/context-diff-model.md)
 - [Request-stream identity investigation](docs/notes/request-stream-identity-investigation.md)
 
 ## Completed setup
+
+- [Synchronized change navigation](docs/tasks/done/050-sync-change-outline.md) —
+  Previous/Next follows the outline, reveals nested entries and selects the correct side.
+
+- [Readable payload root](docs/tasks/done/049-readable-payload-root.md) — plain-language
+  root label with dynamic field count; build and browser checks pass.
+
+- [Payload outline](docs/tasks/done/048-payload-outline.md) — expandable left-hand
+  JSON navigation for either diff side; keyboard/mobile/large-array checks pass.
+
+- [Default payload diff](docs/tasks/done/047-default-payload-diff.md) — request tabs
+  open in full diff; block inspection is optional. Build and browser checks pass.
+
+- [Visible comparison keys](docs/tasks/done/046-visible-comparison-keys.md) — exact
+  comparison_lineage shown on live cards and collapsed groups; refresh to load.
+
+- [Operation-aware baselines](docs/tasks/done/045-isolate-token-count-baselines.md) —
+  verified in the user's new live session following restart.
+
+- [Transcript correlation experiment](docs/tasks/done/044-transcript-correlation-experiment.md) —
+  64 exact main-transcript joins; subagent correlation still needs a real sample.
+
+- [Full request payload diff](docs/tasks/done/043-full-payload-diff.md) — optional
+  complete unified JSON diff in request tabs; refresh to load the rebuilt frontend.
+
+- [Metadata-only tool comparisons](docs/tasks/done/042-metadata-only-tool-changes.md) —
+  unchanged tool calls/results shown once; cache metadata changes remain explicit.
+
+- [Container system trust](docs/tasks/done/041-container-system-trust.md) — startup
+  installs proxy CA inside agent/probe containers; current agent fixed in place,
+  host trust unchanged.
 
 - [Project ignore rules](docs/tasks/done/040-project-gitignore.md) — sensitive local
   state and generated output ignored; source, examples and lockfiles preserved.

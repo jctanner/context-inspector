@@ -12,6 +12,7 @@ import zlib
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
 from src.protocol.events import ProtocolError, validate_event
 from src.server.identity import classify_request_stream
@@ -52,6 +53,7 @@ class ContextSnapshot:
     exact_request: dict[str, Any]
     stream_identity: dict[str, Any]
     request_purpose: dict[str, Any]
+    request_operation: str = "unknown"
 
 
 def _content_blocks(value: Any) -> list[Any]:
@@ -109,10 +111,33 @@ def classify_block_origin(value: Any) -> tuple[str, str, tuple[str, ...]]:
 
 
 def comparison_lineage(snapshot: ContextSnapshot) -> str:
+    if snapshot.request_operation == "token_count":
+        return f'{snapshot.stream_identity["stream_id"]}:operation:token_count'
     classification = snapshot.request_purpose["classification"]
+    stream = snapshot.stream_identity["stream_id"]
+    # Different captured API operations need independent baselines even when
+    # purpose/agent attribution is unknown (for example non-streaming probes).
+    if snapshot.request_operation == "stream_generation":
+        stream += ":operation:stream_generation"
     if classification.startswith("likely_internal_"):
-        return f'{snapshot.stream_identity["stream_id"]}:purpose:{classification}'
-    return snapshot.stream_identity["stream_id"]
+        return f'{stream}:purpose:{classification}'
+    return stream
+
+
+def classify_request_operation(request: dict[str, Any]) -> str:
+    """Endpoint evidence, not prompt text or a guess about agent identity."""
+    if str(request.get("method", "")).upper() != "POST":
+        return "unknown"
+    path = urlsplit(request.get("url", "")).path.rstrip("/")
+    if path.endswith(("/messages/count_tokens", "/models/count-tokens:rawPredict", "/models/count-tokens:countTokens")):
+        return "token_count"
+    if path.endswith(":streamRawPredict"):
+        return "stream_generation"
+    if path.endswith("/messages"):
+        payload = request.get("body", {}).get("decoded", {}).get("value", {})
+        if isinstance(payload, dict) and payload.get("stream") is True:
+            return "stream_generation"
+    return "unknown"
 
 
 def _token_count(payload: dict[str, Any]) -> tuple[int | None, str | None]:
@@ -174,6 +199,7 @@ def normalize_request(event: dict[str, Any]) -> ContextSnapshot | None:
         message_count=len(messages), blocks=tuple(blocks), exact_request=request,
         stream_identity=classify_request_stream(request),
         request_purpose=request_purpose,
+        request_operation=classify_request_operation(request),
     )
 
 
@@ -217,7 +243,9 @@ def compare_snapshots(previous: ContextSnapshot | None, current: ContextSnapshot
             if new_index in used_new:
                 continue
             old_index = old_by_path.get(block.path)
-            if old_index is not None and old_index not in used_old:
+            if (old_index is not None and old_index not in used_old
+                    and (old[old_index].category, old[old_index].role, old[old_index].kind, old[old_index].origin)
+                    == (block.category, block.role, block.kind, block.origin)):
                 used_old.add(old_index); used_new.add(new_index)
                 changes.append({"change": "transformed", "before": asdict(old[old_index]), "after": asdict(block)})
         for index, block in enumerate(old):
@@ -243,6 +271,7 @@ def compare_snapshots(previous: ContextSnapshot | None, current: ContextSnapshot
         ),
         "stream_identity": current.stream_identity,
         "request_purpose": current.request_purpose,
+        "request_operation": current.request_operation,
         "comparison_lineage": comparison_lineage(current),
         "relationship": relationship,
         "counts": counts,

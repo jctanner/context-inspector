@@ -24,9 +24,24 @@ class RuntimeRunnerTests(unittest.TestCase):
         self.assertNotIn("podman logs \"${proxy_name}\" 2>&1 | grep", runner)
         running_check = runner.index("proxy_running=$(podman inspect")
         listening_check = runner.index("socket.create_connection")
-        smoke_test = runner.index("--entrypoint curl")
+        smoke_test = runner.index("curl --fail")
         self.assertLess(running_check, listening_check)
         self.assertLess(listening_check, smoke_test)
+
+    def test_container_trust_bootstrap_precedes_commands(self) -> None:
+        runtime = Path(__file__).parents[1] / "runtime"
+        runner = (runtime / "run.sh").read_text()
+        bootstrap = (runtime / "container-entrypoint.sh").read_text()
+        self.assertEqual(runner.count('"${bootstrap_mount[@]}"'), 2)
+        self.assertNotIn("--cacert", runner)
+        self.assertNotIn("GIT_SSL_NO_VERIFY", runner)
+        self.assertIn("NODE_EXTRA_CA_CERTS=/mitmproxy-ca-cert.pem", runner)
+        self.assertIn('/context-inspector-entrypoint.sh "${agent_command}" "$@"', runner)
+        self.assertIn('! -f /run/.containerenv', bootstrap)
+        self.assertIn("update-ca-certificates >/dev/null", bootstrap)
+        self.assertLess(bootstrap.index("update-ca-certificates >/dev/null"), bootstrap.index("exec setpriv"))
+        self.assertIn("--reuid=1000 --regid=1000 --clear-groups --no-new-privs", bootstrap)
+        self.assertIn('"$@"', bootstrap)
 
 
 if __name__ == "__main__":

@@ -118,6 +118,7 @@ mounts=(
     --volume "${claude_config_dir}:/home/runner/.claude:rw,Z"
     --volume "${claude_config_file}:/home/runner/.claude.json:rw,Z"
 )
+bootstrap_mount=(--volume "${runtime_dir}/container-entrypoint.sh:/context-inspector-entrypoint.sh:ro,Z")
 if [[ -f ${adc_path} ]]; then
     adc_copy="${state_dir}/adc.json"
     cp "${adc_path}" "${adc_copy}"
@@ -125,16 +126,18 @@ if [[ -f ${adc_path} ]]; then
     mounts+=(--volume "${adc_copy}:/tmp/adc.json:ro,Z" --env GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json)
 fi
 
-podman run --rm --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 "${agent_env[@]}" \
+podman run --rm --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 --user 0 "${agent_env[@]}" \
     --volume "${state_dir}/mitmproxy/mitmproxy-ca-cert.pem:/mitmproxy-ca-cert.pem:ro,Z" \
-    --entrypoint curl "${agent_image}" --fail --silent --show-error --output /dev/null \
+    "${bootstrap_mount[@]}" --entrypoint bash "${agent_image}" /context-inspector-entrypoint.sh \
+    curl --fail --silent --show-error --output /dev/null \
     --retry 10 --retry-delay 1 --retry-connrefused \
-    --cacert /mitmproxy-ca-cert.pem https://www.googleapis.com/discovery/v1/apis
+    https://www.googleapis.com/discovery/v1/apis
 
 agent_command=$1
 shift
-podman run --rm -it --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 --workdir /workspace \
-    --entrypoint "${agent_command}" "${agent_env[@]}" "${mounts[@]}" "${agent_image}" "$@"
+podman run --rm -it --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 --user 0 --workdir /workspace \
+    --entrypoint bash "${agent_env[@]}" "${mounts[@]}" "${bootstrap_mount[@]}" "${agent_image}" \
+    /context-inspector-entrypoint.sh "${agent_command}" "$@"
 
 if ! podman cp "${proxy_name}:/tmp/${capture_name}" "${capture_dir}/${capture_name}"; then
     : >"${capture_dir}/${capture_name}"

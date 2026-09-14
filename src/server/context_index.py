@@ -69,7 +69,8 @@ class ContextIndex:
             purpose = self.latest.get((flow, "context.response"), {}).get("purpose", {}).get("classification", "")
             request_purpose = self.latest[(flow, "context.diff")]["request_purpose"]["classification"]
             candidate = self.latest.get((flow, "context.usage"))
-            if candidate and not purpose.startswith("likely_internal_") and not request_purpose.startswith("likely_internal_"):
+            operation = self.latest[(flow, "context.diff")].get("request_operation")
+            if candidate and operation != "token_count" and not purpose.startswith("likely_internal_") and not request_purpose.startswith("likely_internal_"):
                 if usage is None or candidate["sequence"] > usage["sequence"]:
                     usage = candidate
         return {"events": events, "cursor": len(self.journal), "total": len(eligible),

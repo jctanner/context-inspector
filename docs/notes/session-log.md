@@ -1,5 +1,135 @@
 # Session Log
 
+## 2026-09-14 — Synchronize change navigation
+
+- Task 050 fixes independently maintained outline and change-navigation state.
+  Added bug record; also found initial Previous skips the final hunk.
+- Use side-specific containing-node ranges and explicitly reveal lazy ancestors.
+- Completed and verified: build plus all four synthetic browser fixtures,
+  including 166 worker cases, added/removed side switches, message 204 paging,
+  collapsed ancestor reopening, initial Previous/wrap and preserved focus/scroll.
+  Playwright closed; no live session input or restart.
+
+## 2026-09-14 — Readable payload root
+
+- Task 049 replaces cryptic root notation with a plain-language payload label
+  and count. Child labels and JSON Pointer navigation remain unchanged.
+- Verified frontend build, 166 worker cases and outline browser regression,
+  including root jump. Playwright closed; refresh loads the updated label.
+
+## 2026-09-14 — Payload outline implementation
+
+- Task 048: index decoded JSON paths in the worker and map side-specific line
+  numbers to diff rows. Separate Before/After trees avoid implying semantic
+  identity between positional array entries. ADR-0022 records the design.
+- Completed: sticky desktop outline, stacked mobile layout, side-specific jump
+  highlighting, native disclosures and lazy 100-entry child pages.
+- Build and all four synthetic browser fixtures pass (156 worker cases and
+  205-message outline fixture). Playwright closed; refresh loads new frontend.
+
+## 2026-09-14 — Default payload diff
+
+- Task 047 makes full payload diff the initial request-tab view and retains
+  block inspection as a toggle, even after baseline loading fails.
+- Reuses the existing transition and preserves selected views in open tabs;
+  live summary loading remains lazy. Updated ADR-0020 and README.
+- Frontend build and both browser fixtures pass, including baseline retry.
+  Playwright closed; no live session input or restart.
+
+## 2026-09-14 — Visible comparison keys
+
+- Task 046 exposes the exact comparison_lineage under “Comparison group” on
+  live cards and collapsed repeat groups. Keys wrap and remain selectable.
+- Grouping is not labelled as confirmed agent/conversation identity. Existing
+  confidence labels remain. No new API requests or sockets.
+- Build/diff checks and both browser fixtures pass; Playwright closed.
+
+## 2026-09-14 — Verify user restart
+
+- New active session 9737831f45f2420387ff9e03ab3e11ba exposes the new operation
+  classifications. At inspection: 28 requests, 13 response records, no index error.
+- Generation requests #19/#25 use #17/#23, skipping token-count calls #18/#24.
+  Task 045 deployed; token-count baseline contamination resolved for new history.
+- No session input, restart, or browser connection was introduced by verification.
+
+## 2026-09-14 — Operation-aware baseline fix (awaiting deployment)
+
+- Task 045 isolates token-count and streaming API histories, labels ancillary
+  cards, and rejects positional transformations across incompatible block origins.
+- Replaying current saved capture preserves 130 requests; #130 now compares with
+  #93, retains 41 blocks and no longer pairs foo with a system reminder.
+- 77 Python tests, frontend build and both browser fixtures pass; Playwright closed.
+- Live server unchanged. Restart requires approval and terminates Claude; an
+  archived-session access path is also needed to inspect old cards afterward.
+
+## 2026-09-14 — Transcript correlation experiment
+
+- Task 044 finds exact main-transcript joins for 64 captured requests using both
+  response message IDs and response request-id headers. Every distinct transcript
+  assistant identifier is represented; no real subagent transcripts available.
+- Crucially, foo baseline #128 is a captured count-tokens:rawPredict request.
+  All five foo requests are token counting; #130 matches the main transcript.
+- Recorded token-count-baseline-contamination bug and aggregate experiment report.
+  Reproducible read-only diagnostic and three synthetic join tests added/passing.
+- No MLflow installation, Claude input, live-session changes or production
+  classification fixes were performed. Unmatched traffic remains unattributed.
+
+## 2026-09-14 — Request 130 block pairing diagnosis
+
+- Confirmed foo-to-system-reminder comparison comes from positional matching at
+  messages/0/0 against a one-message baseline. Current request has nine messages
+  and a substantially different request shape; predecessor confidence is none.
+- Recorded unrelated-request-block-pairing bug. Internal-probe purpose remains
+  a hypothesis, not captured fact. No application change made during diagnosis.
+
+## 2026-09-14 — Full request payload diff
+
+- Task 043 adds an optional complete unified diff to request tabs. The recorded
+  predecessor is fetched lazily; labels distinguish pretty-printed captured JSON
+  from wire formatting and preserve comparison confidence (ADR-0020).
+- Worker-based bounded Myers diff, line numbers, +/- coloring, change navigation,
+  frame-batched rows and tab-close cancellation keep live-session work separate.
+- Worker tests reconstruct both inputs across 155 cases, including first requests,
+  identical/repeated lines and a large replacement fallback. Browser fixtures
+  verify baseline fetch/reuse, view switching and existing inspection behavior.
+
+## 2026-09-14 — Fix metadata-only tool comparisons
+
+- Task 042 treats cache-only tool_use/tool_result changes as unchanged tool
+  content: one neutral disclosure, plus the exact metadata change table.
+- All non-cache fields must compare equal, including tool identity and nested
+  input. Actual input/ID changes retain before/after views.
+- Build/diff checks and both browser fixtures pass, including six new regression
+  cases. Playwright closed; frontend refresh loads the fix without server restart.
+
+## 2026-09-14 — Request 83 identical comparison panels
+
+- Compared request 83's exact transformed block: tool_use, same type/ID/name/input,
+  only cache_control added (ephemeral). The visible red/green values are identical.
+- readableChange's unchanged-content check covers text/thinking but not tool calls.
+  Recorded identical-tool-change-panels bug; no application changes made.
+
+## 2026-09-14 — Container-local proxy system trust
+
+- Task 041 adds a container-only trust bootstrap for new agent and probe
+  containers. It installs the mounted public CA, preserves existing system roots,
+  and drops to UID/GID 1000 before running commands (ADR-0019).
+- Fresh disposable-container checks passed: ordinary Git/curl through the proxy,
+  expected agent home/PATH/Claude executable and UID/GID 1000. Missing CA fails
+  startup with exit 1. No workspace/credentials mounted in smoke-test containers.
+- Applied the same bootstrap inside the current agent, without session restart.
+  Ordinary Git now reaches a previously failing repository; curl also succeeds.
+- Host /etc/ssl/certs/ca-certificates.crt SHA-256 remained
+  8c97794a899a32666593979dc7adfaec8bda2b420eb092ff0d987e44ad0bf6ea.
+- Shell syntax and diff checks pass; full Python suite passes all 70 tests.
+
+## 2026-09-13 — Diagnose GitHub clone failures
+
+- Current session captures show Git certificate-signer failures on three clones.
+- Read-only GitHub ls-remote inside Claude reproduces the failure; explicitly
+  supplying the mounted proxy CA succeeds. Runner config sets Node trust only.
+- Recorded git-proxy-ca-trust bug. No fix applied or live agent input sent.
+
 ## 2026-09-13 — Restore project ignore rules
 
 - Task 040 recreates the deleted root .gitignore at the user's request, extending

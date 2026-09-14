@@ -39,6 +39,7 @@ async (page) => {
     const view = await context.newPage();
     const inspectLatest = async () => {
       await view.locator("#flow-events .inspect-request").last().click();
+      await view.getByRole("button", { name: "Block inspection", exact: true }).click();
     };
     const closeEvidence = async () => {
       await view.locator("#view-tabs .tab-close").last().click();
@@ -51,6 +52,7 @@ async (page) => {
     await view.locator(".group-reply").filter({ hasText: "A readable reply" }).waitFor();
     check(await view.locator("#flow-events > li").count() === 1, "repeats must collapse to one row");
     check(!(await view.locator(".repeat-disclosure").evaluate(e => e.open)), "repeat group should start collapsed");
+    check(await view.locator(".repeat-group > .comparison-group .comparison-group-key").innerText() === "unknown", "collapsed repeat groups must expose their grouping key");
     await view.locator(".repeat-disclosure > summary").click();
     check(await view.locator(".flow-event").count() === 3, "all individual requests must remain inspectable");
     const visible = await view.locator(".flow-events").innerText();
@@ -59,6 +61,7 @@ async (page) => {
     // A different lineage must never be folded into the repeat group.
     events.send(JSON.stringify(diff(4, "hello", true, "another-lineage")));
     await view.waitForFunction(() => document.querySelectorAll("#flow-events > li").length === 2);
+    check(await view.locator("#flow-events > .flow-event .comparison-group-key").innerText() === "another-lineage", "distinct grouping keys must remain distinguishable");
     const changed = diff(5, "<img src=x onerror=alert(1)> literal text");
     changed.counts = { added: 0, removed: 0, transformed: 1, retained: 0 };
     changed.changes = [{ change: "transformed", before: block("Before fixture"), after: block("<img src=x onerror=alert(1)> literal text") }];
@@ -136,6 +139,39 @@ async (page) => {
     events.send(JSON.stringify({ type: "stream-error", message: "simulated partial write" }));
     await view.waitForFunction(expected => Number.parseInt(document.querySelector("#flow-count").textContent) === expected, countBeforeDisconnect + 2);
     check(connectionUrls.length === 3, "capture record errors must trigger replay without refresh");
+    // Request 83 regression: cache hints alone must not paint identical tools red/green.
+    let number = 22;
+    const call = { type: "tool_use", id: "tool-fixture", name: "Bash", input: { command: "pwd", timeout: 1000 } };
+    const result = { type: "tool_result", tool_use_id: "tool-fixture", content: "fixture output" };
+    for (const [oldValue, newValue, unchanged, label, action] of [
+      [call, { ...call, cache_control: { type: "ephemeral" } }, true, "Tool call", "added"],
+      [{ ...call, cache_control: { type: "ephemeral" } }, call, true, "Tool call", "removed"],
+      [{ ...call, cache_control: { type: "ephemeral", ttl: "5m" } }, { ...call, input: { timeout: 1000, command: "pwd" }, cache_control: { type: "ephemeral", ttl: "1h" } }, true, "Tool call", "changed"],
+      [result, { ...result, cache_control: { type: "ephemeral" } }, true, "Tool result", "added"],
+      [call, { ...call, input: { command: "ls" }, cache_control: { type: "ephemeral" } }, false],
+      [call, { ...call, id: "different-id", cache_control: { type: "ephemeral" } }, false],
+    ]) {
+      const count = await view.locator("#flow-events .inspect-request").count();
+      const event = diff(number++, "tool fixture");
+      event.counts = { added: 0, removed: 0, transformed: 1, retained: 0 };
+      event.changes = [{ change: "transformed", before: { ...block(""), value: oldValue }, after: { ...block(""), value: newValue } }];
+      events.send(JSON.stringify(event));
+      await view.waitForFunction(n => document.querySelectorAll("#flow-events .inspect-request").length === n, count + 1);
+      await inspectLatest();
+      if (unchanged) {
+        await view.locator(".request-view .change-explanation").filter({ hasText: `${label} unchanged · cache-control metadata ${action}` }).waitFor();
+        check(await view.locator(".request-view .before, .request-view .after").count() === 0, "unchanged tools must not have red/green panels");
+        check(await view.locator(".request-view .unchanged-tool").count() === 1, "unchanged tool content appears once");
+        await view.locator(".unchanged-tool > summary").click();
+        check((await view.locator(".unchanged-tool").innerText()).includes(label === "Tool call" ? "pwd" : "fixture output"), "neutral disclosure preserves readable tool content");
+        check((await view.locator(".field-changes").innerText()).includes("ephemeral"), "exact cache metadata stays visible");
+      } else {
+        await view.locator(".request-view .before").waitFor();
+        check(await view.locator(".request-view .after").count() === 1, "real tool changes keep before/after");
+        check(await view.locator(".request-view .unchanged-tool").count() === 0, "changed input or ID must not be labeled unchanged");
+      }
+      await closeEvidence();
+    }
     return { grouping: true, individualEvidence: true, visibleReplies: true, safeContent: true, beforeAfter: true, scrollPreserved: true, followLatest: true, narrowLayout: true, clearResetsGroups: true, metadataAddedRemovedModified: true, mixedTextAndMetadata: true, automaticReconnect: true, sameSequenceReplay: true };
   } finally { await context.close(); }
 }

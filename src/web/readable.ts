@@ -67,11 +67,18 @@ export function readableChange(parent: HTMLElement, before: Record<string, unkno
   const newValue = record(after?.value);
   const textKey = ["text", "thinking"].find(key => typeof oldValue?.[key] === "string" && typeof newValue?.[key] === "string");
   const unchangedText = textKey !== undefined && oldValue![textKey] === newValue![textKey];
+  // Cache hints alter the wire value, not the tool call/result itself. Compare
+  // every other field, including IDs and nested input, before calling it unchanged.
+  const withoutCache = (value: Record<string, unknown>) => Object.fromEntries(Object.entries(value).filter(([key]) => key !== "cache_control"));
+  const unchangedTool = oldValue && newValue
+    && ["tool_use", "tool_result"].includes(String(oldValue.type))
+    && canonical(withoutCache(oldValue)) === canonical(withoutCache(newValue));
+  const toolLabel = oldValue?.type === "tool_result" ? "Tool result" : "Tool call";
   const keys = oldValue && newValue ? [...new Set([...Object.keys(oldValue), ...Object.keys(newValue)])]
     .filter(key => key !== textKey && canonical(oldValue[key]) !== canonical(newValue[key])) : [];
   const action = (key: string) => !Object.hasOwn(newValue!, key) ? "removed" : !Object.hasOwn(oldValue!, key) ? "added" : "changed";
   const fieldSummary = keys.map(key => `${key === "cache_control" ? "cache-control metadata" : key} ${action(key)}`).join(" · ");
-  parent.append(element("p", "change-explanation", `${unchangedText ? "Text unchanged" : textKey ? "Text changed" : "Block value changed"}${fieldSummary ? ` · ${fieldSummary}` : ""}`));
+  parent.append(element("p", "change-explanation", `${unchangedTool ? `${toolLabel} unchanged` : unchangedText ? "Text unchanged" : textKey ? "Text changed" : "Block value changed"}${fieldSummary ? ` · ${fieldSummary}` : ""}`));
   if (keys.length) {
     const table = document.createElement("table");
     table.className = "field-changes";
@@ -97,7 +104,10 @@ export function readableChange(parent: HTMLElement, before: Record<string, unkno
     }
     table.append(body); parent.append(table);
   }
-  if (unchangedText) {
+  if (unchangedTool) {
+    const shared = disclosure(parent, `Unchanged ${toolLabel.toLowerCase()}`, "unchanged-tool");
+    readableValue(shared, withoutCache(oldValue!));
+  } else if (unchangedText) {
     const shared = disclosure(parent, "Unchanged text", "unchanged-text");
     readableValue(shared, oldValue![textKey!]);
   } else {

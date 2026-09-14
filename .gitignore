@@ -72,3 +72,4 @@ Thumbs.db
 Desktop.ini
 
 # Intentionally keep package-lock.json, uv.lock, pyproject.toml, source and docs.
+workspace/

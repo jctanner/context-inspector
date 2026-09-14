@@ -5,6 +5,7 @@ import "./style.css";
 import { disclosure, readableBlock, readableChange, readableValue } from "./readable";
 import { FastContext } from "./fast-context";
 import { RequestTabs } from "./request-tabs";
+import { addPayloadDiff } from "./payload-diff";
 
 const terminalElement = document.querySelector<HTMLDivElement>("#terminal")!;
 const startButton = document.querySelector<HTMLButtonElement>("#start")!;
@@ -123,6 +124,7 @@ type ContextChange = {
 };
 
 type ContextDiff = {
+  request_operation?: string;
   detail_url?: string;
   body_digest?: string;
   request_number?: number;
@@ -350,6 +352,13 @@ function startContextConnection(id: string, scheme: string): void {
   void fastContext.start();
 }
 
+function comparisonGroup(diff: ContextDiff): HTMLElement {
+  const row = textElement("p", "comparison-group", "");
+  row.title = "Backend grouping key: comparison_lineage. This selects comparison history within the capture session; it is not necessarily a unique conversation or confirmed agent ID.";
+  row.append(textElement("span", "comparison-group-label", "Comparison group"), textElement("code", "comparison-group-key", diff.comparison_lineage || "unavailable"));
+  return row;
+}
+
 function renderContextDiff(diff: ContextDiff, existing?: HTMLLIElement): void {
   if (!existing && requestRows.has(diff.flow_id)) return;
   if (!existing) {
@@ -371,7 +380,7 @@ function renderContextDiff(diff: ContextDiff, existing?: HTMLLIElement): void {
   const item = document.createElement("li");
   item.dataset.order = String(diff.request_number ?? existing?.dataset.order ?? flowCount);
   item.className = `flow-event context-diff relationship-${diff.relationship}`;
-  if (diff.request_purpose.classification.startsWith("likely_internal_")) {
+  if (diff.request_operation === "token_count" || diff.request_purpose.classification.startsWith("likely_internal_")) {
     item.classList.add("purpose-internal");
     item.dataset.purpose = diff.request_purpose.classification;
     if (!existing) internalFlows.add(diff.flow_id);
@@ -379,10 +388,11 @@ function renderContextDiff(diff: ContextDiff, existing?: HTMLLIElement): void {
   const header = document.createElement("header");
   header.append(textElement("span", "event-sequence", `Request ${item.dataset.order}`));
   const titles = { initial: "Initial context", chronological: "Context updated", retry_or_duplicate: "Unchanged context", compaction_candidate: "Possible compaction" };
-  header.append(textElement("strong", "event-kind", titles[diff.relationship]));
+  header.append(textElement("strong", "event-kind", diff.request_operation === "token_count" ? "Token count · ancillary request" : titles[diff.relationship]));
   header.append(textElement("span", "event-time", `${diff.metrics.body_bytes.toLocaleString()} bytes`));
   const countSummary = `+${diff.counts.added} added · −${diff.counts.removed} removed · ~${diff.counts.transformed} changed · =${diff.counts.retained} retained`;
   item.append(header, textElement("p", "event-summary context-counts", countSummary));
+  item.append(comparisonGroup(diff));
   item.append(textElement("p", "comparison-label", diff.predecessor_flow_id === null ? "First observed context" : diff.predecessor_confidence === "none" ? "Comparison: chronological · attribution unknown" : `Comparison confidence: ${diff.predecessor_confidence}`));
   if (!existing) {
     const inspect = document.createElement("button");
@@ -403,15 +413,17 @@ function renderContextDiff(diff: ContextDiff, existing?: HTMLLIElement): void {
       evidence.querySelector(".response-awaiting")?.remove();
       const list = document.createElement("ul"); list.className = "request-detail-list"; list.append(evidence);
       panel.replaceChildren(list);
+      addPayloadDiff(panel, list, detail, owner!, signal);
     });
     item.append(inspect);
-    item.append(textElement("p", "response-awaiting", "No captured response available"));
+    item.append(textElement("p", "response-awaiting", diff.request_operation === "token_count" ? "Token-count endpoint · excluded from generation baselines" : "No captured response available"));
     requestRows.set(diff.flow_id, item);
     appendRequest(item, diff);
     updateCount();
     return;
   }
   const metadata = disclosure(item, "Evidence & attribution", "request-evidence");
+  if (diff.request_operation === "token_count") metadata.append(textElement("p", "context-provenance", "Token-count operation identified by captured POST URL. This request is compared only with token-count requests, not model-generation context."));
   metadata.append(textElement("p", "context-provenance", "Request only · normalized from the captured API request. Response content is not included in these change blocks."));
   metadata.append(textElement("p", `request-purpose confidence-${diff.request_purpose.confidence}`, `Request purpose: ${diff.request_purpose.classification.replaceAll("_", " ")} · ${diff.request_purpose.confidence} confidence · lineage ${diff.comparison_lineage} · ${diff.request_purpose.evidence.join(", ")}`));
   metadata.append(textElement("p", `stream-identity confidence-${diff.stream_identity.confidence}`, `Stream: ${diff.stream_identity.stream_id} · ${diff.stream_identity.confidence} confidence`));
@@ -484,6 +496,7 @@ function appendRequest(item: HTMLLIElement, diff: ContextDiff): void {
       const group = document.createElement("li");
       group.className = "repeat-group";
       const details = disclosure(group, "", "repeat-disclosure");
+      group.append(comparisonGroup(diff));
       if (!batchRendering) {
         const bounds = lastRequest.item.getBoundingClientRect();
         const viewport = flowEventsElement.getBoundingClientRect();

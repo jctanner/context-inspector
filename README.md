@@ -149,6 +149,10 @@ the divider—or focus it and use the left/right arrow keys—to resize the pane
 
 Request cards show readable block content, labeled before/after changes, and
 model reply text. Large blocks offer a preview and full-content disclosure;
+each card also displays its exact `comparison_lineage` as **Comparison group**.
+That key selects its comparison history within this capture session; it is not
+necessarily a unique conversation or confirmed agent identifier. Collapsed repeat
+groups display the key too.
 thinking, attribution, raw evidence and token accounting have separate disclosures.
 Adjacent matching requests collapse into a group with every request still
 inspectable. Visible request numbers count displayed requests; wire event sequence
@@ -164,9 +168,26 @@ With the summary API available, refresh loads the latest 25 request summaries
 newest first. **Load older requests** retrieves earlier pages. Expand **Inspect
 changes & request evidence** or **Read full reply & response evidence** to fetch
 the complete per-request content. Request inspection opens a full-width in-app
-`Request #N` tab with side-by-side changes. Its × button closes it; Live session
+`Request #N` tab defaulting to the full payload diff. Its × button closes it; Live session
 stays pinned and connected, with a new-request badge during background activity.
-Opening the same request selects its existing tab. Arrow keys select tabs and
+Opening the same request selects its existing tab and preserves the selected view.
+The default is a complete GitHub-style unified diff: red/green lines, before/after line numbers,
+and Previous/Next change navigation. It compares pretty-printed decoded JSON
+bodies with the recorded baseline; unchanged lines remain visible without
+expanding blocks. This is not a byte-for-byte wire-format diff. Missing baseline
+evidence is reported explicitly, and very large edits may be shown as a labelled
+replacement region to keep computation bounded. **Block inspection** switches to
+optional side-by-side block changes; **Full payload diff** returns to the diff.
+The baseline is fetched when opening a request tab, not while loading live cards.
+The left-hand **Payload outline** navigates JSON fields, message indices/roles,
+and tool names. Click a label to jump to its diff row; expand its disclosure arrow
+to browse nested fields. **After / Before** selects which payload to navigate,
+including removed fields in Before. Indices are positions, not message identities.
+Large branches load 100 outline entries at a time; no diff lines are hidden.
+On narrow screens the outline sits above the diff.
+**Previous/Next change** also selects and reveals the corresponding outline
+entry, choosing Before for a removed row and After for an added row.
+Arrow keys select tabs and
 Delete closes a selected request tab. Tabs are local to this page and reset on
 refresh; closed requests can be reopened from their cards. Initial previews are not substitutes for exact
 capture. The server builds its context index once per session and shares it across
@@ -188,6 +209,16 @@ containers under this project's ignored `.state/claude` directory. The runner
 does not write this state outside the project. It may contain sensitive account,
 project, history, or preference metadata and must remain uncommitted.
 Project-local `.claude/` instructions remain separate.
+
+The runner installs the capture proxy's public CA into each agent/probe
+container's system trust store before starting its command. Ordinary Git and
+curl HTTPS commands work through the proxy with TLS verification enabled.
+Only container-local trust files change; the host trust store is untouched.
+Startup briefly runs as container root, then drops to UID/GID 1000 and restores
+the agent account's home before executing Claude. Node retains its extra-CA
+setting. Custom agent images must include `update-ca-certificates`, `setpriv`,
+`getent`, `install`, and a UID/GID 1000 account. Other tools using private CA
+bundles may require separate configuration.
 
 For a harmless terminal-only test that does not start Podman or Claude, set
 `CONTEXT_INSPECTOR_COMMAND_JSON` to a JSON argv array before launching.

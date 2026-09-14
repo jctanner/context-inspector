@@ -3,6 +3,7 @@ async (page) => {
   const context = await page.context().browser().newContext({ viewport: { width: 1280, height: 800 } });
   const check = (v, message) => { if (!v) throw new Error(message); };
   const make = n => ({ kind: "context.diff", flow_id: `f${n}`, sequence: n * 10, request_number: n,
+    request_operation: n === 42 ? "token_count" : "unknown",
     cursor: n, detail_url: `/api/sessions/fixture/context-details/f${n}/request`, body_digest: `body${n}`,
     predecessor_flow_id: n === 1 ? null : `f${n-1}`, predecessor_basis: "session_chronology_unclassified", predecessor_confidence: "none",
     stream_identity: { stream_id: "unclassified", confidence: "none", evidence: [] },
@@ -15,6 +16,7 @@ async (page) => {
   let connections = 0;
   let terminals = 0;
   let failNext = false;
+  let failBaseline = false;
   const full = { ...make(44), detail_url: undefined, changes: [{ change: "transformed",
     before: { category: "messages", path: "messages/0/0", role: "user", kind: "text", value: { type: "text", text: "Previous content" } },
     after: { category: "messages", path: "messages/0/0", role: "user", kind: "text", value: { type: "text", text: "Fetched full content" } } }],
@@ -29,7 +31,9 @@ async (page) => {
       details++;
       if (failNext) { failNext = false; return route.fulfill({ status: 503, json: {} }); }
       const n = Number(route.request().url().match(/\/f(\d+)\//)[1]);
-      return route.fulfill({ json: { ...full, flow_id: `f${n}`, request_number: n } });
+      if (failBaseline && n === 44) { failBaseline = false; return route.fulfill({ status: 503, json: {} }); }
+      return route.fulfill({ json: { ...full, flow_id: `f${n}`, request_number: n, predecessor_flow_id: n === 1 ? null : `f${n - 1}`,
+        exact_request: n === 43 ? { body: { decoded: { value: { messages: [{ role: "user", content: "Previous full content" }] } } } } : full.exact_request } });
     });
     await context.routeWebSocket("**/api/sessions/fixture/terminal", socket => { terminals++; socket.send("fixture"); });
     await context.routeWebSocket("**/api/sessions/fixture/contexts?*", socket => {
@@ -43,10 +47,41 @@ async (page) => {
     await view.locator("#flow-count").filter({ hasText: "25 of 44" }).waitFor();
     check(await view.locator("#flow-events > li .event-sequence").first().innerText() === "Request 44", "latest request must appear first");
     check(details === 0, "initial history must not fetch evidence");
+    check(await view.locator("#flow-events > li").first().locator(".comparison-group-key").innerText() === "unclassified", "summary cards must show the exact grouping key without fetching evidence");
+    check((await view.locator("#flow-events > li").nth(2).innerText()).includes("Token count · ancillary request"), "token-count cards must identify their API operation");
+    check(await view.locator("#flow-events > li").nth(2).evaluate(el => el.classList.contains("purpose-internal")), "token-count cards should be visually ancillary");
     check(await view.locator(".change-block").count() === 0, "collapsed summaries must not construct hidden block lists");
     const initialLoadMs = Date.now() - start;
     await view.locator("#flow-events").evaluate(el => { el.scrollTop = 20; });
     await view.locator("#flow-events > li").first().locator(".inspect-request").click();
+    await view.locator(".payload-remove").filter({ hasText: "Previous full content" }).waitFor();
+    check(await view.locator(".request-detail-list").isHidden(), "new request tabs must default to full payload diff");
+    check(await view.locator(".payload-toggle").getAttribute("aria-pressed") === "true", "default diff selection must be accessible");
+    const outline = view.getByRole("navigation", { name: "Payload outline", exact: true });
+    await outline.waitFor();
+    await outline.locator('[data-path="/messages"]').click();
+    check((await view.locator(".payload-target").innerText()).includes('"messages"'), "outline must jump to the section start");
+    await outline.locator("summary").filter({ hasText: "messages" }).focus();
+    await view.keyboard.press("Enter");
+    await outline.locator('[data-path="/messages/0"]').waitFor();
+    check((await outline.locator('[data-path="/messages/0"]').innerText()).includes("user"), "message role must appear in outline");
+    await outline.locator("summary").filter({ hasText: "[0]" }).focus();
+    await view.keyboard.press("Enter");
+    await outline.locator('[data-path="/messages/0/content"]').click();
+    check(await view.locator(".payload-target").evaluate(el => el.classList.contains("payload-add")), "After outline must target added content");
+    await outline.getByLabel("Payload side").selectOption("Before");
+    await outline.locator("summary").filter({ hasText: "messages" }).focus();
+    await view.keyboard.press("Enter");
+    await outline.locator("summary").filter({ hasText: "[0]" }).focus();
+    await view.keyboard.press("Enter");
+    await outline.locator('[data-path="/messages/0/content"]').focus();
+    await view.keyboard.press("Enter");
+    check(await view.locator(".payload-target").evaluate(el => el.classList.contains("payload-remove")), "Before outline must target removed content with keyboard");
+    check((await view.locator(".payload-target").innerText()).includes("Previous full content"), "Before jump must show baseline text");
+    await view.setViewportSize({ width: 390, height: 844 });
+    check(await view.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "outline and diff must fit mobile viewport");
+    await view.setViewportSize({ width: 1280, height: 800 });
+    await view.getByRole("button", { name: "Block inspection", exact: true }).click();
     await view.locator(".readable-text").filter({ hasText: "Fetched full content" }).waitFor();
     check(await view.getByRole("tab", { name: "Request #44", exact: true }).getAttribute("aria-selected") === "true", "request tab must be selected");
     check(await view.locator("#workspace").isHidden(), "request view must replace the split pane");
@@ -56,12 +91,27 @@ async (page) => {
     const afterBounds = await view.locator(".request-view .after").boundingBox();
     check(afterBounds.x > beforeBounds.x && Math.abs(afterBounds.y - beforeBounds.y) < 2, "before and after should be side by side");
     check(await view.locator(".request-view .request-evidence").getAttribute("open") === null, "raw evidence remains collapsed");
-    check(details === 1, "opening a summary must fetch only its own evidence");
+    check(details === 2, "opening a request tab fetches its evidence and recorded baseline");
     check(await view.locator("#flow-count").innerText() === "25 of 44 requests · newest first", "hydration must not alter request count");
     await view.getByRole("tab", { name: "Live session", exact: true }).click();
     check(await view.locator("#flow-events").evaluate(el => el.scrollTop) === 20, "live scroll must survive tab switch");
     await view.locator("#flow-events > li").first().locator(".inspect-request").click();
-    check(details === 1 && await view.getByRole("tab", { name: "Request #44", exact: true }).count() === 1, "reopening selects the existing tab without fetching");
+    check(details === 2 && await view.getByRole("tab", { name: "Request #44", exact: true }).count() === 1, "reopening selects the existing tab without fetching");
+    await view.getByRole("button", { name: "Full payload diff", exact: true }).click();
+    await view.locator(".payload-remove").filter({ hasText: "Previous full content" }).waitFor();
+    await view.locator(".payload-add").filter({ hasText: "Fetched full content" }).waitFor();
+    check(details === 2, "full diff fetches only the recorded predecessor on demand");
+    check(await view.locator(".request-detail-list").isHidden(), "full diff replaces expandable block inspection");
+    check((await view.locator(".payload-provenance").innerText()).includes("Baseline flow f43"), "diff must identify its recorded baseline");
+    check(await view.locator(".payload-same").count() > 0, "full diff retains unchanged lines");
+    await view.getByRole("button", { name: "Next change", exact: true }).click();
+    check(await outline.locator('[aria-current="location"]').getAttribute("data-path") === "/messages/0/content", "change navigation must select the containing outline node");
+    check(await outline.getByLabel("Payload side").inputValue() === "Before", "removed hunk start must select Before");
+    check(await view.locator(".payload-target").evaluate(el => el.classList.contains("payload-remove")), "change navigation must highlight its actual row");
+    await view.getByRole("button", { name: "Block inspection", exact: true }).click();
+    await view.getByRole("button", { name: "Full payload diff", exact: true }).click();
+    check(details === 2, "switching views must reuse the baseline and rendered diff");
+    await view.getByRole("button", { name: "Block inspection", exact: true }).click();
     await view.getByRole("tab", { name: "Live session", exact: true }).click();
     await view.locator("#flow-events > li").nth(1).locator(".inspect-request").click();
     await view.getByRole("button", { name: "Close Request #43", exact: true }).click();
@@ -84,8 +134,14 @@ async (page) => {
     check(await view.locator("#view-tabs [role=tab]").count() === 1, "closed request can be reopened and keyboard-closed");
     failNext = true;
     await view.locator("#flow-events > li").first().locator(".inspect-request").click();
+    failBaseline = true;
     await view.getByRole("button", { name: "Retry", exact: true }).click();
+    await view.locator(".payload-view").filter({ hasText: "Recorded comparison baseline is unavailable" }).waitFor();
+    check(await view.locator(".payload-diff").count() === 0, "missing baseline must not show false additions");
+    await view.getByRole("button", { name: "Block inspection", exact: true }).click();
     await view.locator(".request-view .readable-text").filter({ hasText: "Fetched full content" }).waitFor();
+    await view.getByRole("button", { name: "Full payload diff", exact: true }).click();
+    await view.locator(".payload-navigation").filter({ hasText: "Payloads identical" }).waitFor();
     await view.getByRole("tab", { name: "Request #45", exact: true }).press("Home");
     check(await view.locator("#live-tab").getAttribute("aria-selected") === "true", "Home selects pinned live tab");
     await view.getByRole("button", { name: "Close Request #45", exact: true }).click();
