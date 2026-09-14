@@ -10,18 +10,19 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PARENT_PROJECT_ROOT = PROJECT_ROOT.parent
+DEFAULT_WORKSPACE = PROJECT_ROOT / "workspace"
+DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_RUNNER = PROJECT_ROOT / "src" / "runtime" / "run.sh"
 DEFAULT_STATE_DIR = Path(tempfile.gettempdir()) / f"context-inspector-{os.getuid()}"
 
 
 @dataclass(frozen=True)
 class Settings:
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8765
-    workspace: Path = PARENT_PROJECT_ROOT
+    workspace: Path = DEFAULT_WORKSPACE
     runner: Path = DEFAULT_RUNNER
-    model: str = "sonnet"
+    model: str = DEFAULT_MODEL
     command_override: tuple[str, ...] | None = None
     state_dir: Path = DEFAULT_STATE_DIR
     context_window_tokens: int = 200_000
@@ -38,11 +39,11 @@ class Settings:
             command_override = tuple(parsed)
         configured_window = os.environ.get("CONTEXT_INSPECTOR_CONTEXT_WINDOW_TOKENS")
         return cls(
-            host=os.environ.get("CONTEXT_INSPECTOR_HOST", "127.0.0.1"),
+            host=os.environ.get("CONTEXT_INSPECTOR_HOST", "0.0.0.0"),
             port=int(os.environ.get("CONTEXT_INSPECTOR_PORT", "8765")),
-            workspace=Path(os.environ.get("CONTEXT_INSPECTOR_WORKSPACE", PARENT_PROJECT_ROOT)).resolve(),
+            workspace=Path(os.environ.get("CONTEXT_INSPECTOR_WORKSPACE", DEFAULT_WORKSPACE)).resolve(),
             runner=Path(os.environ.get("CONTEXT_INSPECTOR_RUNNER", DEFAULT_RUNNER)).resolve(),
-            model=os.environ.get("CONTEXT_INSPECTOR_MODEL", "sonnet"),
+            model=os.environ.get("CONTEXT_INSPECTOR_MODEL", DEFAULT_MODEL),
             command_override=command_override,
             state_dir=Path(os.environ.get("CONTEXT_INSPECTOR_STATE_DIR", DEFAULT_STATE_DIR)).resolve(),
             context_window_tokens=int(configured_window or "200000"),
@@ -50,8 +51,10 @@ class Settings:
         )
 
     def validate(self) -> None:
-        if self.host not in {"127.0.0.1", "::1", "localhost"}:
-            raise ValueError("Context Inspector must bind to loopback unless the code is explicitly revised")
+        if self.host not in {"0.0.0.0", "127.0.0.1", "::1", "localhost"}:
+            raise ValueError("Context Inspector host must be 0.0.0.0 or a loopback address")
+        if self.workspace == DEFAULT_WORKSPACE:
+            self.workspace.mkdir(mode=0o700, exist_ok=True)
         if not self.workspace.is_dir():
             raise ValueError(f"Workspace does not exist: {self.workspace}")
         if self.context_window_tokens <= 0:

@@ -1,5 +1,106 @@
 # Session Log
 
+## 2026-09-13 — Restore project ignore rules
+
+- Task 040 recreates the deleted root .gitignore at the user's request, extending
+  coverage for credentials, captures, workspace state, Python packaging/caches,
+  frontend builds/dependencies, browser artifacts, and editor/OS files.
+- Two tests cover ignored paths and retained source/examples/lockfiles. No
+  tracked files match the rules; no index changes or deletion were needed.
+- git diff --check passes. Unrelated source and documentation remain visible.
+
+## 2026-09-13 — Closable request evidence tabs
+
+- Task 039 replaces inline request hydration with deduplicated full-width tabs,
+  keeping the live DOM and its existing connections. Summary and legacy replay
+  share the evidence renderer. ADR-0018 records tab lifetime and evidence handling.
+- Added ×/Delete closing, adjacent selection, keyboard tab navigation, lazy fetch
+  cancellation/retry, scroll restoration, and a background request badge.
+- Browser validation covers full-width side-by-side views, close/reopen/dedup,
+  unchanged socket counts, scrolling, pagination, replay, safe text, metadata-only
+  diffs, and narrow screens. Tests use isolated synthetic sessions.
+- Final build and all 67 Python tests pass, as do both browser fixtures. All
+  Playwright tabs closed afterward. Refresh loads the rebuilt frontend without
+  restarting the server or changing the live Claude session.
+
+## 2026-09-13 — Default Claude model
+
+- Task 038 changes the default CLI model to the requested claude-haiku-4-5,
+  sharing one constant between direct settings and environment fallback.
+- Explicit model overrides remain supported; local .env has no model assignment.
+- Configuration/launcher tests: 8 passed; diff check passed. Server and current
+  Claude session unchanged; restart required to load the new default.
+
+## 2026-09-13 — Project-local Claude workspace
+
+- Container mount inspection confirmed the default exposed sibling repositories.
+- Task 037 changes the default to PROJECT_ROOT/workspace, creates it if missing,
+  ignores its contents, and retains explicit workspace overrides (ADR-0017).
+- Configuration, terminal and launcher tests: 13 passed. Diff whitespace check passed.
+- Deployment awaits restart approval; existing container mounts remain unchanged.
+
+## 2026-09-13 — Fast context replay
+
+- Task 036 adds one context index per session, recent-history pages, no-store
+  detail endpoints and compact live batches with a separate replay cursor.
+- Browser draws summaries newest first in batches, fetching evidence on expansion
+  and older requests on demand. Closed block groups build their contents lazily.
+- 61 Python tests and frontend build pass. Both legacy readability/recovery and
+  compact-history Playwright scenarios pass.
+- Benchmark on current capture: 44 requests, ~14 MB full replay reduced to 94 KB
+  initial page (99.33% smaller); 1.087 s cold scan and 0.72 ms warm snapshot.
+- New server API is not yet loaded in production. Deployment awaits restart
+  direction, since restarting terminates the active Claude session.
+
+## 2026-09-13 — Context stream recovery
+
+- Implemented independent context status, bounded reconnect/replay, and event
+  deduplication that preserves usage/response events sharing a wire sequence.
+- Confirmed and fixed a separate reader defect: partial trailing JSONL records
+  were consumed instead of retried. Added deterministic tests for both readers.
+- 60 Python tests, frontend build and synthetic browser recovery tests pass.
+- Live browser loads recovery now. Python reader fix waits for next server
+  restart; current Claude session preserved. Remote browser's exact failure cause
+  remains unverified; both identified code paths are addressed.
+
+## 2026-09-13 — Explain metadata-only changes
+
+- Task 034 fixes readable views that hid removed cache_control behind identical
+  Before/After text. Direct field tables now accompany explicit unchanged/changed
+  text labels; identical text appears once on demand.
+- Build, 11 web regression tests, and extended synthetic browser checks pass.
+  Live last-card verification confirms unchanged text and removed ephemeral
+  cache-control metadata. No capture data or comparison classification changed.
+
+## 2026-09-13 — Readable inspector cards
+
+- Confirmed task 032 deployment through the real active-session endpoint;
+  Playwright reconnected without the temporary discovery adapter.
+- Task 033 moves classification details behind evidence disclosures, renders
+  readable before/after blocks and replies, groups adjacent matching requests,
+  fixes request numbering and neutral missing-response labels, and makes token
+  accounting expandable. Reading text is 15px and supporting labels about 13px.
+- Added a synthetic Playwright regression scenario under src/tests covering
+  grouping, individual evidence, direct replies, text safety, before/after,
+  scroll preservation/follow, narrow layout and clear-history behavior.
+- Live browser verification: 13 matching requests collapse to one row; the
+  continuing session and model replies remain visible. Captured traffic is not
+  added as a fixture. Build passes; full-suite results recorded in task 033.
+
+## 2026-09-13 — Shared session discovery
+
+- Added server-authoritative active-session discovery and reuse on Start;
+  browsers poll while idle and attach regardless of saved identity.
+- Recorded ADR-0013. Session clear-history cursors and expanded cards remain
+  browser-local; terminal input, resize, and Stop are shared.
+- All 59 tests pass, including simultaneous viewers and matching context replay;
+  TypeScript/production build passes. Two isolated Playwright profiles verify
+  automatic joining and stale-ID recovery on an isolated cat fixture.
+- Attached Playwright to the user's existing live session using a browser-only
+  adapter for the new discovery endpoint: 17 requests, 2 response sections.
+- Production Python remains unchanged in memory. Task awaits restart direction
+  because restarting terminates the user's current Claude session.
+
 ## 2026-08-19
 
 Agent: Codex
@@ -451,3 +552,21 @@ Next:
 - Clarified that the viewer tracks model calls rather than assuming one API
   exchange per user turn.
 - Both focused README regression tests pass.
+
+## 2026-09-13 — Python project dependency declaration
+
+- Added root `pyproject.toml` for the Python application using the existing
+  `src` namespace, with FastAPI, Uvicorn, Pydantic, and PTY runtime
+  dependencies plus development and proxy extras.
+- Updated the launcher and README to use and provision the project-local
+  `.venv`.
+- The project-local editable install succeeded; 58 of 59 Python tests passed.
+  The remaining live-server test was blocked by the sandbox's socket policy.
+
+## 2026-09-13 — Enable remote server access
+
+- Changed the default Uvicorn bind address to `0.0.0.0` while retaining an
+  explicit loopback override through `CONTEXT_INSPECTOR_HOST`.
+- Documented remote URL access and the unauthenticated-tool security boundary.
+- Configuration tests pass, including rejection of unapproved non-loopback
+  addresses.

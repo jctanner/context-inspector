@@ -54,17 +54,17 @@ class TerminalSessionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SettingsTests(unittest.TestCase):
-    def test_default_server_is_loopback_and_runner_is_real(self) -> None:
+    def test_default_server_binds_all_interfaces_and_runner_is_real(self) -> None:
         settings = Settings()
         settings.validate()
-        self.assertEqual(settings.host, "127.0.0.1")
+        self.assertEqual(settings.host, "0.0.0.0")
         self.assertTrue(DEFAULT_RUNNER.is_file())
         self.assertTrue(os.access(DEFAULT_RUNNER, os.X_OK))
         self.assertEqual(settings.claude_command()[:3], (str(DEFAULT_RUNNER), "--", "claude"))
 
-    def test_non_loopback_binding_is_rejected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "loopback"):
-            Settings(host="0.0.0.0").validate()
+    def test_unapproved_binding_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "0.0.0.0 or a loopback"):
+            Settings(host="192.0.2.10").validate()
 
     def test_context_window_is_configurable_and_must_be_positive(self) -> None:
         previous = os.environ.get("CONTEXT_INSPECTOR_CONTEXT_WINDOW_TOKENS")

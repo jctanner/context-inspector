@@ -18,4 +18,11 @@ if [[ ! -f "${project_dir}/src/web/dist/index.html" ]]; then
 fi
 
 cd "${project_dir}"
-exec python -m src.server
+python_bin="${project_dir}/.venv/bin/python"
+if [[ ! -x ${python_bin} ]]; then
+    echo "ERROR: project virtual environment not found: ${python_bin}" >&2
+    echo "Create it with: python3 -m venv ${project_dir}/.venv" >&2
+    echo "Install dependencies with: ${python_bin} -m pip install -e '${project_dir}[dev]'" >&2
+    exit 1
+fi
+exec "${python_bin}" -m src.server

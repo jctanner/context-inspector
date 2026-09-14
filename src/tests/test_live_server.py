@@ -60,17 +60,42 @@ class LiveServerTests(unittest.TestCase):
             with urllib.request.urlopen(request, timeout=2) as response:
                 session_id = json.load(response)["session_id"]
 
+            # A fresh browser discovers the same process without a saved ID.
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/sessions/active", timeout=2) as response:
+                active = json.load(response)
+            self.assertEqual(active["session_id"], session_id)
+            self.assertTrue(active["alive"])
+            with urllib.request.urlopen(request, timeout=2) as response:
+                reused = json.load(response)
+            self.assertEqual(reused["session_id"], session_id)
+            self.assertEqual(reused["pid"], active["pid"])
+
             asyncio.run(self._exercise_socket(port, session_id, state_directory.name))
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/sessions/{session_id}/context-history", timeout=3) as response:
+                history = json.load(response)
+                self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(history["total"], 1)
+            summary = next(event for event in history["events"] if event["kind"] == "context.diff")
+            self.assertEqual(summary["changes"], [])
+            self.assertEqual(summary["exact_request"], {})
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}" + summary["detail_url"], timeout=2) as response:
+                evidence = json.load(response)
+            self.assertEqual(evidence["flow_id"], "flow-context")
+            self.assertTrue(evidence["changes"])
+            asyncio.run(self._exercise_compact(port, session_id, history["cursor"]))
             time.sleep(0.2)
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/sessions/{session_id}", timeout=2) as response:
                 status = json.load(response)
             self.assertTrue(status["alive"])
             asyncio.run(self._exercise_reconnect(port, session_id))
+            asyncio.run(self._exercise_shared_viewers(port, session_id))
             delete = urllib.request.Request(
                 f"http://127.0.0.1:{port}/api/sessions/{session_id}", method="DELETE",
             )
             with urllib.request.urlopen(delete, timeout=2) as response:
                 self.assertTrue(json.load(response)["stopped"])
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/sessions/active", timeout=2) as response:
+                self.assertIsNone(json.load(response))
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}/api/sessions/{session_id}", timeout=2)
             except urllib.error.HTTPError as error:
@@ -132,6 +157,33 @@ class LiveServerTests(unittest.TestCase):
             })
             flow_event = json.loads(await asyncio.wait_for(flow_socket.recv(), timeout=2))
             self.assertEqual(flow_event["kind"], "flow.error")
+
+    async def _exercise_compact(self, port: int, session_id: str, cursor: int) -> None:
+        uri = f"ws://127.0.0.1:{port}/api/sessions/{session_id}/contexts?compact=true&cursor={cursor}"
+        async with websockets.connect(uri) as ws:
+            batch = json.loads(await asyncio.wait_for(ws.recv(), 2))
+            self.assertEqual(batch["type"], "context-batch")
+            self.assertEqual(batch["cursor"], cursor)
+            self.assertEqual(batch["events"], [])
+
+    async def _exercise_shared_viewers(self, port: int, session_id: str) -> None:
+        terminal = f"ws://127.0.0.1:{port}/api/sessions/{session_id}/terminal"
+        context = f"ws://127.0.0.1:{port}/api/sessions/{session_id}/contexts?after_sequence=0"
+        async with websockets.connect(terminal) as first, websockets.connect(terminal) as second:
+            await first.send(json.dumps({"type": "input", "data": "shared-viewer-marker\n"}))
+            for viewer in (first, second):
+                output = bytearray()
+                while b"shared-viewer-marker" not in output:
+                    chunk = await asyncio.wait_for(viewer.recv(), timeout=2)
+                    if isinstance(chunk, bytes):
+                        output.extend(chunk)
+                self.assertIn(b"READY", output)
+            async with websockets.connect(context) as left, websockets.connect(context) as right:
+                for _ in range(2):
+                    a = json.loads(await asyncio.wait_for(left.recv(), timeout=2))
+                    b = json.loads(await asyncio.wait_for(right.recv(), timeout=2))
+                    self.assertEqual(a, b)
+                    self.assertIn(a["kind"], {"context.diff", "context.usage"})
 
     async def _exercise_reconnect(self, port: int, session_id: str) -> None:
         uri = f"ws://127.0.0.1:{port}/api/sessions/{session_id}/terminal"

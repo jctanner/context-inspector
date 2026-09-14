@@ -36,14 +36,11 @@ class LauncherTests(unittest.TestCase):
             (root / ".env").write_text("INSPECTOR_ENV_TEST=from-project-root\n")
             (root / "src" / "web" / "dist").mkdir(parents=True)
             (root / "src" / "web" / "dist" / "index.html").write_text("ready")
-            fake_bin = root / "fake-bin"
-            fake_bin.mkdir()
-            fake_python = fake_bin / "python"
+            fake_python = root / ".venv" / "bin" / "python"
+            fake_python.parent.mkdir(parents=True)
             fake_python.write_text("#!/usr/bin/env bash\nprintf '%s' \"${INSPECTOR_ENV_TEST:-missing}\"\n")
             fake_python.chmod(0o755)
-            environment = os.environ.copy()
-            environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
-            result = subprocess.run([launcher], text=True, capture_output=True, check=False, env=environment)
+            result = subprocess.run([launcher], text=True, capture_output=True, check=False)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout, "from-project-root")
 

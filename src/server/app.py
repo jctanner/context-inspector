@@ -9,7 +9,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -18,6 +18,7 @@ from .config import Settings
 from .terminal import TerminalExit, TerminalManager
 from .flows import FlowEventStream
 from .context import ContextEventStream
+from .context_index import ContextIndex
 
 
 class CreateSessionRequest(BaseModel):
@@ -60,10 +61,22 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     settings = settings or Settings.from_environment()
     settings.validate()
     manager = manager or TerminalManager()
+    indexes: dict[str, ContextIndex] = {}
+
+    def context_index(session_id: str) -> ContextIndex:
+        if manager.get(session_id) is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if session_id not in indexes:
+            indexes[session_id] = ContextIndex(ContextEventStream(
+                settings.state_dir / "sessions" / session_id / "events.jsonl", session_id,
+                settings.context_window_tokens, settings.context_window_source,
+            ))
+        return indexes[session_id]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         yield
+        await asyncio.gather(*(index.close() for index in indexes.values()))
         await manager.stop_all()
 
     app = FastAPI(title="Context Inspector", lifespan=lifespan)
@@ -76,6 +89,11 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
 
     @app.post("/api/sessions", response_model=CreateSessionResponse)
     async def create_session(request: CreateSessionRequest) -> CreateSessionResponse:
+        # No await between checking and creating: concurrent requests handled
+        # by this server's event loop cannot spawn duplicate shared sessions.
+        active = manager.active()
+        if active is not None:
+            return CreateSessionResponse(session_id=active.id, pid=active.pid)
         if any("\x00" in argument for argument in request.extra_args):
             raise HTTPException(status_code=400, detail="Arguments may not contain NUL bytes")
         try:
@@ -96,8 +114,18 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         session = manager.create(argv, cwd=settings.workspace, env=environment, session_id=session_id)
         return CreateSessionResponse(session_id=session.id, pid=session.pid)
 
+    @app.get("/api/sessions/active", response_model=SessionStatusResponse | None)
+    async def active_session() -> SessionStatusResponse | None:
+        session = manager.active()
+        if session is None:
+            return None
+        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=True)
+
     @app.delete("/api/sessions/{session_id}")
     async def stop_session(session_id: str) -> dict[str, bool]:
+        index = indexes.pop(session_id, None)
+        if index is not None:
+            await index.close()
         stopped = await manager.stop(session_id)
         if not stopped:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -162,12 +190,48 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         except WebSocketDisconnect:
             pass
 
+    @app.get("/api/sessions/{session_id}/context-history")
+    async def context_history(session_id: str, response: Response, before: int | None = None,
+                              after_sequence: int = 0, limit: int = Query(default=25, ge=1, le=100)):
+        index = context_index(session_id)
+        await index.ready.wait()
+        response.headers["Cache-Control"] = "no-store"
+        return index.snapshot(before=before, after_sequence=after_sequence, limit=limit)
+
+    @app.get("/api/sessions/{session_id}/context-details/{flow_id}/{part}")
+    async def context_details(session_id: str, flow_id: str, part: str, response: Response):
+        index = context_index(session_id)
+        await index.ready.wait()
+        kind = {"request": "context.diff", "response": "context.response"}.get(part)
+        event = index.full.get((flow_id, kind))
+        if event is None:
+            raise HTTPException(status_code=404, detail="Captured detail not available")
+        response.headers["Cache-Control"] = "no-store"
+        return event
+
     @app.websocket("/api/sessions/{session_id}/contexts")
-    async def context_socket(websocket: WebSocket, session_id: str, after_sequence: int = 0) -> None:
+    async def context_socket(websocket: WebSocket, session_id: str, after_sequence: int = 0,
+                             compact: bool = False, cursor: int = 0) -> None:
         if manager.get(session_id) is None:
             await websocket.close(code=4404, reason="Session not found")
             return
         await websocket.accept()
+        if compact:
+            index = context_index(session_id)
+            await index.ready.wait()
+            if cursor < 0 or cursor > len(index.journal):
+                await websocket.close(code=4400, reason="Invalid context cursor")
+                return
+            try:
+                while manager.get(session_id) is not None:
+                    batch = index.journal[cursor:cursor + 100]
+                    cursor += len(batch)
+                    events = [event for event in batch if event["sequence"] > after_sequence]
+                    await websocket.send_json({"type": "context-batch", "events": events, "cursor": cursor, "error": index.error})
+                    await asyncio.sleep(0.25 if not batch else 0)
+            except (WebSocketDisconnect, RuntimeError):
+                pass
+            return
         stream = ContextEventStream(
             settings.state_dir / "sessions" / session_id / "events.jsonl", session_id,
             settings.context_window_tokens, settings.context_window_source,

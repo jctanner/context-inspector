@@ -5,7 +5,7 @@ import unittest
 class WebLayoutRegressionTests(unittest.TestCase):
     def test_desktop_shell_constrains_content_to_internal_scrollers(self) -> None:
         css = (Path(__file__).parents[1] / "web" / "style.css").read_text()
-        self.assertIn("grid-template-rows: 5.5rem minmax(0, 1fr)", css)
+        self.assertIn("grid-template-rows: 5.5rem auto minmax(0, 1fr)", css)
         self.assertIn(".workspace { --terminal-width: 50%; min-height: 0; overflow: hidden;", css)
         self.assertIn(".pane { min-width: 0; min-height: 0; overflow: hidden;", css)
         self.assertIn(".flow-events { min-height: 0; flex: 1; overflow: auto;", css)
@@ -45,14 +45,14 @@ class WebLayoutRegressionTests(unittest.TestCase):
         source = (web / "main.ts").read_text()
         self.assertIn("Model request context changes", html)
         self.assertIn("Request only · normalized from the captured API request", source)
-        self.assertIn("request-context blocks", source)
+        self.assertIn("readableChange(content, change.before, change.after)", source)
         self.assertIn("Response content is not included", source)
 
     def test_correlated_responses_are_visibly_separate(self) -> None:
         source = (Path(__file__).parents[1] / "web" / "main.ts").read_text()
         self.assertIn('kind: "context.response"', source)
         self.assertIn("const requestRows = new Map<string, HTMLLIElement>()", source)
-        self.assertIn("Correlated model response", source)
+        self.assertIn("Model reply", source)
         self.assertIn("correlated by exact flow_id", source)
         self.assertIn("Reconstructed response content blocks", source)
         self.assertIn("Exact captured response metadata and wire bytes", source)
@@ -63,7 +63,8 @@ class WebLayoutRegressionTests(unittest.TestCase):
         web = Path(__file__).parents[1] / "web"
         html = (web / "index.html").read_text()
         source = (web / "main.ts").read_text()
-        self.assertIn("Latest non-internal request context size", html)
+        self.assertIn("Context usage", html)
+        self.assertIn("Classified internal calls are excluded", html)
         self.assertIn("const usageByFlow = new Map<string, ContextUsage>()", source)
         self.assertIn("const internalFlows = new Set<string>()", source)
         self.assertIn('response.purpose.classification.startsWith("likely_internal_")', source)

@@ -156,6 +156,10 @@ class TerminalManager:
     def get(self, session_id: str) -> TerminalSession | None:
         return self._sessions.get(session_id)
 
+    def active(self) -> TerminalSession | None:
+        """Return the oldest live session, shared by all browser clients."""
+        return next((session for session in self._sessions.values() if session.alive), None)
+
     async def stop(self, session_id: str) -> bool:
         session = self._sessions.pop(session_id, None)
         if session is None:

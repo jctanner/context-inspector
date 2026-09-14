@@ -21,6 +21,8 @@ class FlowEventStream:
                 with self.path.open("r", encoding="utf-8") as source:
                     source.seek(offset)
                     while line := source.readline():
+                        if not line.endswith("\n"):
+                            break  # Writer has not committed this JSONL record yet.
                         offset = source.tell()
                         try:
                             event = json.loads(line)

@@ -1,38 +1,74 @@
-# Sensitive and generated runtime state
-.state/
-state/
-captures/
-*.log
-*.pem
-*.key
-*.crt
-
-# Local environment and credentials
+# Local environment and credentials (keep the checked-in setup example)
 .env
 .env.*
 !.env.example
+.envrc
+*.pem
+*.key
+*.crt
+adc.json
+application_default_credentials.json
 
-# Python
+# Sensitive runtime state and captured model traffic
+.state/
+state/
+captures/
+.mitmproxy/
+flows-*.jsonl
+*.log
+*.log.*
+*.pid
+
+# Agent workspace: keep its ignore file, never its working contents
+/workspace/*
+!/workspace/.gitignore
+
+# Python environments, caches, packaging and test output
+.venv/
+venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.uv-cache/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
-.venv/
-venv/
 
-# Node and frontend builds
+# JavaScript dependencies, frontend build caches and coverage
 node_modules/
-dist/
+.vite/
+*.tsbuildinfo
+coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# Editors and operating systems
+# Browser automation artifacts may include captured prompts and responses
+.playwright-mcp/
+playwright-report/
+test-results/
+blob-report/
+
+# Local editors and OS files
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# Intentionally keep package-lock.json, uv.lock, pyproject.toml, source and docs.

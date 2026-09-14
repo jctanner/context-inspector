@@ -104,28 +104,74 @@ projects into the interpreted context view without replacing the raw capture.
 From this directory:
 
 ```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
 cp .env.example .env
 # Edit .env with your local provider configuration.
 ./src/bin/context-inspector
 ```
 
+The launcher uses the project-local `.venv` and the dependencies declared in
+the root `pyproject.toml`.
+
 The launcher requires and sources `.env` from this project root; it does not
 search parent directories. It then builds the browser bundle if needed and
-starts the server on `http://127.0.0.1:8765`. Open that URL and use
-**Start Claude** to launch the existing two-container runner under the browser
-terminal's PTY.
+starts the server on port `8765`, bound to all host interfaces by default. Open
+`http://<server-ip>:8765` from the other machine and use **Start Claude** to
+launch the existing two-container runner under the browser terminal's PTY.
+New sessions default to `claude-haiku-4-5`; set `CONTEXT_INSPECTOR_MODEL` in
+`.env` to override it. Restart the server to reload configuration.
+This is an unauthenticated local administration tool; use a firewall or SSH
+tunnel if the server network is not fully trusted. Set
+`CONTEXT_INSPECTOR_HOST=127.0.0.1` in `.env` to restore loopback-only binding.
 
-The active session ID is retained in browser storage. Refreshing or navigating
-back to the page reconnects to the same live Claude process and replays its
-available terminal and context history. Closing the page only detaches the
-browser; use **Stop** to terminate Claude and its containers. Restarting the
-Context Inspector server still shuts down all server-owned sessions.
+All browsers discover and join the same active Claude session, including fresh
+profiles and connections through another hostname. Idle pages check every three
+seconds; **Start Claude** reuses a running session instead of spawning another.
+Each viewer receives live terminal output and replays available terminal and
+context history. Terminal input and **Stop** affect the shared session for everyone.
+Closing a page only detaches that browser. **Clear history**, scrolling, and
+expanded cards remain local to each browser. Restarting the Context Inspector
+server still shuts down all server-owned sessions.
+
+Claude's working directory `/workspace` is a read/write bind mount of this
+project's `./workspace` directory, created automatically if missing. It does
+not mount the parent directory or sibling projects by default. Workspace contents
+are ignored by Git. An explicit `CONTEXT_INSPECTOR_WORKSPACE` can select another
+existing directory. Changing this setting requires restarting the server and
+starting a new Claude container; existing container mounts do not change.
 
 The context pane connects to a derived context WebSocket and presents one
 structural comparison per model request. Added, removed, transformed, and
 retained blocks remain expandable to exact captured request fields. The raw
 flow WebSocket and completed archives remain independent evidence paths. Drag
 the divider—or focus it and use the left/right arrow keys—to resize the panes.
+
+Request cards show readable block content, labeled before/after changes, and
+model reply text. Large blocks offer a preview and full-content disclosure;
+thinking, attribution, raw evidence and token accounting have separate disclosures.
+Adjacent matching requests collapse into a group with every request still
+inspectable. Visible request numbers count displayed requests; wire event sequence
+numbers remain in evidence. “No captured response available” does not imply that
+a request is still running. While reading older content, new traffic leaves your
+scroll position in place and offers **Jump to latest**.
+
+The context stream has its own connection status. It automatically reconnects
+and replays missed updates without duplicating cards; the terminal connection
+status is independent.
+
+With the summary API available, refresh loads the latest 25 request summaries
+newest first. **Load older requests** retrieves earlier pages. Expand **Inspect
+changes & request evidence** or **Read full reply & response evidence** to fetch
+the complete per-request content. Request inspection opens a full-width in-app
+`Request #N` tab with side-by-side changes. Its × button closes it; Live session
+stays pinned and connected, with a new-request badge during background activity.
+Opening the same request selects its existing tab. Arrow keys select tabs and
+Delete closes a selected request tab. Tabs are local to this page and reset on
+refresh; closed requests can be reopened from their cards. Initial previews are not substitutes for exact
+capture. The server builds its context index once per session and shares it across
+browsers; the first scan may take longer than subsequent refreshes. The browser
+falls back to full replay when connected to an older server without this API.
 
 The utilization meter defaults to a configured 200,000-token window. Override
 that denominator for a different enabled model/window configuration:

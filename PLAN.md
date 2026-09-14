@@ -14,16 +14,50 @@ requests and responses captured by the mitmproxy sidecar.
 
 - None currently.
 
+## Awaiting deployment
+
+- [Project-local workspace](docs/tasks/blocked/037-local-workspace.md) — 13 tests
+  pass; restart and container recreation needed to replace the parent-directory mount.
+
+- [Fast context replay](docs/tasks/blocked/036-fast-context-replay.md) — tested;
+  new Python API requires a restart that ends the active Claude session. Frontend
+  bundle is rebuilt and falls back to legacy replay until then.
+
+## Deployment note
+
+The default model is now `claude-haiku-4-5` in code (task 038); it takes effect
+for new sessions after the server restarts. Existing sessions are unchanged.
+
+Context reconnect/replay is built and served; refresh existing browsers once.
+The complete-record capture reader fix takes effect on the next server restart.
+The current Claude session has been preserved.
+
 ## Pending tasks
 
 - None currently.
 
 ## Open bugs
 
+- [Overbroad workspace mount](docs/bugs/open/overbroad-workspace.md) — fixed in code,
+  awaiting deployment.
+
+
 - [Starlette TestClient hangs during startup](docs/bugs/open/starlette-testclient-startup-hang.md)
 - [Browser requests a missing favicon](docs/bugs/open/missing-favicon.md)
 
 ## Decisions
+
+- [ADR-0018 — In-app request evidence tabs](docs/decisions/ADR-0018-request-evidence-tabs.md)
+
+- [ADR-0017 — Project-local Claude workspace](docs/decisions/ADR-0017-project-local-workspace.md)
+
+- [ADR-0016 — Paged context summaries](docs/decisions/ADR-0016-paged-context-summaries.md)
+
+- [ADR-0015 — Context stream recovery](docs/decisions/ADR-0015-context-stream-recovery.md)
+
+- [ADR-0014 — Readable context presentation](docs/decisions/ADR-0014-readable-context-presentation.md)
+
+- [ADR-0013 — Shared active session](docs/decisions/ADR-0013-shared-active-session.md)
 
 - [ADR-0001 — Preserve the Claude CLI as the interaction surface](docs/decisions/ADR-0001-real-cli-over-sdk.md)
 - [ADR-0002 — Python and TypeScript implementation](docs/decisions/ADR-0002-python-typescript-stack.md)
@@ -54,6 +88,27 @@ requests and responses captured by the mitmproxy sidecar.
 
 ## Completed setup
 
+- [Project ignore rules](docs/tasks/done/040-project-gitignore.md) — sensitive local
+  state and generated output ignored; source, examples and lockfiles preserved.
+
+- [Closable request evidence tabs](docs/tasks/done/039-request-evidence-tabs.md) —
+  full-width browser-local views with pinned live session; refresh to load.
+
+- [Default to Claude Haiku 4.5](docs/tasks/done/038-default-haiku-model.md)
+
+- [Recover context streams](docs/tasks/done/035-recover-context-stream.md)
+
+- [Explain metadata-only changes](docs/tasks/done/034-explain-metadata-only-changes.md)
+
+- [Readable context inspector](docs/tasks/done/033-readable-context-inspector.md) —
+  grouped repeats, readable changes/replies, expandable evidence and accounting,
+  preserved reading position. Rebuilt frontend; refresh browser to load.
+
+- [Share the active session](docs/tasks/done/032-share-active-session.md) —
+  deployment confirmed by live server discovery and Playwright reconnection.
+
+- [Enable remote server access](docs/tasks/done/031-enable-remote-server-access.md)
+- [Declare Python project dependencies](docs/tasks/done/030-declare-python-project-dependencies.md)
 - [Initialize the work ledger](docs/tasks/done/000-initialize-work-ledger.md)
 - [Document the validated container runtime](docs/tasks/done/007-document-validated-container-runtime.md)
 - [Define the live event protocol](docs/tasks/done/001-define-live-event-protocol.md)

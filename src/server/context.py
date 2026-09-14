@@ -421,7 +421,7 @@ class ContextEventStream:
         self.context_window_tokens = context_window_tokens
         self.context_window_source = context_window_source
 
-    async def events(self, after: int = 0):
+    async def events(self, after: int = 0, *, mark_ready: bool = False):
         offset = 0
         previous_by_stream: dict[str, ContextSnapshot] = {}
         request_by_flow: dict[str, ContextSnapshot] = {}
@@ -436,6 +436,8 @@ class ContextEventStream:
                 with self.path.open("r", encoding="utf-8") as source:
                     source.seek(offset)
                     while line := source.readline():
+                        if not line.endswith("\n"):
+                            break  # Retry from the last complete record next poll.
                         offset = source.tell()
                         try:
                             event = json.loads(line)
@@ -540,4 +542,7 @@ class ContextEventStream:
                             yield diff
                         if diff["relationship"] != "retry_or_duplicate":
                             previous_by_stream[stream_id] = current
+            if mark_ready:
+                mark_ready = False
+                yield {"type": "replay-ready"}
             await asyncio.sleep(0.05)

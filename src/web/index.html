@@ -17,7 +17,10 @@
         <button id="stop" type="button" disabled>Stop</button>
       </div>
     </header>
-    <main id="workspace" class="workspace">
+    <div id="view-tabs" class="view-tabs" role="tablist" aria-label="Session and request views">
+      <button id="live-tab" type="button" role="tab" aria-selected="true" aria-controls="workspace">Live session</button>
+    </div>
+    <main id="workspace" class="workspace" role="tabpanel" aria-labelledby="live-tab">
       <section class="pane terminal-pane" aria-labelledby="terminal-title">
         <div class="pane-header">
           <h2 id="terminal-title">Claude CLI</h2>
@@ -31,30 +34,31 @@
           <h2 id="context-title">Model request context changes</h2>
           <div class="pane-header-actions">
             <span id="flow-count" class="metric">0 requests</span>
+            <span id="capture-status" class="metric" role="status">Context: not connected</span>
+            <button id="older-history" class="secondary-button" type="button" hidden>Load older requests</button>
             <button id="clear-history" class="secondary-button" type="button" disabled title="Clear displayed context history without stopping Claude">Clear history</button>
           </div>
         </div>
         <section class="context-meter" aria-labelledby="context-meter-title">
           <div class="context-meter-labels">
-            <strong id="context-meter-title">Latest non-internal request context size</strong>
+            <strong id="context-meter-title">Context usage</strong>
             <span id="context-meter-value">Awaiting response usage</span>
           </div>
           <progress id="context-meter-progress" max="100" value="0" aria-describedby="context-meter-detail">Awaiting measurement</progress>
-          <p id="context-meter-detail">The bar measures request context using token accounting returned in the matching model response.</p>
+          <p id="context-meter-status">No measured response yet</p>
+          <details class="meter-evidence"><summary>Token accounting</summary>
+            <p id="context-meter-detail">Measured from usage reported in the matching response. Classified internal calls are excluded.</p>
+          </details>
         </section>
         <div id="flow-empty" class="empty-state">
-          <p class="empty-kicker">Independent evidence path</p>
           <h3>Waiting for model traffic.</h3>
-          <p>Start Claude and send a prompt. Each model request will be compared structurally with its preceding observed context.</p>
-          <dl>
-            <div><dt>Exact evidence</dt><dd>Awaiting bytes</dd></div>
-            <div><dt>Inferred stream</dt><dd>Unclassified</dd></div>
-            <div><dt>Completeness</dt><dd>Awaiting archive</dd></div>
-          </dl>
+          <p>Send a prompt in Claude to see what changed in its context and read the captured reply.</p>
         </div>
         <ol id="flow-events" class="flow-events" aria-label="Captured model traffic" aria-live="polite"></ol>
+        <button id="new-activity" class="new-activity" type="button" hidden>New activity · Jump to latest</button>
       </section>
     </main>
+    <div id="request-views" hidden></div>
     <script type="module" src="/main.ts"></script>
   </body>
 </html>
