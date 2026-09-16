@@ -16,9 +16,30 @@ function body(request: RequestEvidence): unknown {
 }
 
 export function addPayloadDiff(parent: HTMLElement, structured: HTMLElement, request: RequestEvidence, session: string, signal: AbortSignal): void {
+  addPayloadView(parent, structured, signal, {
+    payloadLabel: "Full payload diff", structuredLabel: "Block inspection", tableLabel: "Full request payload unified diff",
+    load: async () => {
+      const after = body(request);
+      let before: unknown;
+      if (request.predecessor_flow_id !== null) {
+        const response = await fetch(`/api/sessions/${encodeURIComponent(session)}/context-details/${encodeURIComponent(request.predecessor_flow_id)}/request`, { cache: "no-store", signal });
+        if (!response.ok) throw new Error("Recorded comparison baseline is unavailable; no substitute baseline was used");
+        before = body(await response.json());
+      }
+      return { before, after, provenance: `Complete decoded JSON body, pretty-printed (not original wire formatting). ${request.predecessor_flow_id === null ? "No predecessor: all lines are additions." : `Baseline flow ${request.predecessor_flow_id} · ${request.predecessor_basis} · ${request.predecessor_confidence} confidence.`}` };
+    },
+  });
+}
+
+type PayloadViewOptions = {
+  payloadLabel: string; structuredLabel: string; tableLabel: string; rootLabel?: string;
+  load: () => Promise<{ before?: unknown; after: unknown; provenance: string; fullOnly?: boolean }>;
+};
+
+export function addPayloadView(parent: HTMLElement, structured: HTMLElement, signal: AbortSignal, options: PayloadViewOptions): void {
   const controls = element("div", "payload-controls", "");
   const toggle = document.createElement("button"); toggle.type = "button"; toggle.className = "payload-toggle secondary-button";
-  toggle.textContent = "Full payload diff"; toggle.setAttribute("aria-pressed", "false");
+  toggle.textContent = options.payloadLabel; toggle.setAttribute("aria-pressed", "false");
   controls.append(toggle);
   const view = element("section", "payload-view", ""); view.hidden = true;
   parent.prepend(controls); parent.append(view);
@@ -29,25 +50,24 @@ export function addPayloadDiff(parent: HTMLElement, structured: HTMLElement, req
     if (loaded || loading || signal.aborted) return;
     loading = true; view.textContent = "Loading complete payload comparison…";
     try {
-      const after = body(request);
-      let before: unknown;
-      if (request.predecessor_flow_id !== null) {
-        const response = await fetch(`/api/sessions/${encodeURIComponent(session)}/context-details/${encodeURIComponent(request.predecessor_flow_id)}/request`, { cache: "no-store", signal });
-        if (!response.ok) throw new Error("Recorded comparison baseline is unavailable; no substitute baseline was used");
-        before = body(await response.json());
-      }
+      const { before, after, provenance, fullOnly } = await options.load();
       if (signal.aborted) return;
       worker = new Worker(new URL("./payload-diff.worker.ts", import.meta.url), { type: "module" });
       worker.onerror = () => { worker?.terminate(); loading = false; view.textContent = "Could not compute payload diff. Switch back and retry."; };
       worker.onmessage = async event => {
         worker?.terminate();
         if (signal.aborted) return;
+        if (options.rootLabel) {
+          for (const node of [event.data.beforeOutline, event.data.afterOutline]) {
+            if (node) node.label = node.label.replace(/^Request payload/, options.rootLabel);
+          }
+        }
         const lines = event.data.lines as { kind: "same" | "add" | "remove"; text: string }[];
-        view.replaceChildren(element("p", "payload-provenance", `Complete decoded JSON body, pretty-printed (not original wire formatting). ${request.predecessor_flow_id === null ? "No predecessor: all lines are additions." : `Baseline flow ${request.predecessor_flow_id} · ${request.predecessor_basis} · ${request.predecessor_confidence} confidence.`}`));
+        view.replaceChildren(element("p", "payload-provenance", provenance));
         if (event.data.fallback) view.append(element("p", "payload-provenance", "Large change: showing the changed region as a complete replacement; no lines omitted."));
         const additions = lines.filter(line => line.kind === "add").length, removals = lines.filter(line => line.kind === "remove").length;
         const navigation = element("div", "payload-navigation", "");
-        navigation.append(element("span", "", additions || removals ? `+${additions} lines · −${removals} lines` : "Payloads identical"));
+        navigation.append(element("span", "", fullOnly ? "Full payload · no comparison selected" : additions || removals ? `+${additions} lines · −${removals} lines` : "Payloads identical"));
         let changes: HTMLElement[] = [];
         const changeIndices: number[] = [];
         let outline: ReturnType<typeof addPayloadOutline> | undefined;
@@ -75,7 +95,7 @@ export function addPayloadDiff(parent: HTMLElement, structured: HTMLElement, req
         }
         navigation.append(layouts);
         view.append(navigation);
-        const table = document.createElement("table"); table.className = "payload-diff"; table.setAttribute("aria-label", "Full request payload unified diff");
+        const table = document.createElement("table"); table.className = "payload-diff"; table.setAttribute("aria-label", options.tableLabel);
         const head = document.createElement("thead"); const labels = document.createElement("tr");
         for (const name of ["Before", "After", "Change", "Payload"]) { const cell = document.createElement("th"); cell.scope = "col"; cell.textContent = name; labels.append(cell); }
         head.append(labels); table.append(head);
@@ -112,6 +132,7 @@ export function addPayloadDiff(parent: HTMLElement, structured: HTMLElement, req
             layouts.setAttribute("aria-busy", "true");
             const rendered = await renderSplitPayload(lines, signal);
             if (!rendered || signal.aborted) return;
+            rendered.table.setAttribute("aria-label", `${options.tableLabel} side-by-side`);
             const splitLayout = element("div", "payload-layout", ""); splitLayout.hidden = true;
             splitLayout.append(rendered.table); view.append(splitLayout);
             split = { layout: splitLayout,
@@ -137,7 +158,7 @@ export function addPayloadDiff(parent: HTMLElement, structured: HTMLElement, req
         for (const button of changeButtons) button.disabled = !changes.length;
         loaded = true; loading = false;
       };
-      worker.postMessage({ before, after });
+      worker.postMessage({ before: fullOnly ? after : before, after });
     } catch (error) {
       loading = false;
       if (!signal.aborted) view.textContent = `${error instanceof Error ? error.message : "Payload comparison unavailable"}. Switch back and retry.`;
@@ -145,7 +166,7 @@ export function addPayloadDiff(parent: HTMLElement, structured: HTMLElement, req
   };
   toggle.onclick = () => {
     const show = view.hidden; view.hidden = !show; structured.hidden = show;
-    toggle.textContent = show ? "Block inspection" : "Full payload diff"; toggle.setAttribute("aria-pressed", String(show));
+    toggle.textContent = show ? options.structuredLabel : options.payloadLabel; toggle.setAttribute("aria-pressed", String(show));
     if (show) void load();
   };
   // Reuse the normal view transition so visibility, accessible state and lazy

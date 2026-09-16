@@ -25,6 +25,72 @@ requests and responses captured by the mitmproxy sidecar.
 
 ## Deployment note
 
+Task 079 clears traces before each new real Start Claude session, not just stack
+startup. Stop and shared-session joins retain logs; unsafe cleanup blocks launch.
+175 tests pass, three skip; build passes. Restart the backend once to activate.
+No live logs deleted or stack restarted during implementation.
+
+Task 078 is ready for user-managed startup: all container/strace contents are
+permanently cleared under startup safety guards, with no backups. New /strace
+tab provides bounded literal cross-file search with filename:line matches;
+Workspace navigation is renamed /workspace. 170 regression tests pass, three
+skip; final focused tests, build and three browser fixtures pass. No live logs
+deleted or stack started. Refresh browser after starting the updated backend.
+
+Task 077 is ready for user-managed restart/new Claude container: cached strace
+layer, container/strace bind mount, non-root -ffttv tracing with append mode,
+agent-only SYS_PTRACE and default seccomp retained. 164 tests pass, three skip;
+native Claude --version and synthetic descendant tracing verified in isolated
+containers. No live stack restart or attachment. Logs are sensitive and unbounded.
+
+Task 075 is built and ready for browser refresh: Response tabs reuse the full
+payload viewer with decoded SSE events, usage outline navigation, optional explicit
+comparison and readable/raw evidence toggle. Three browser fixtures (including
+166 worker reconstruction cases), 18 context tests and build pass. No backend
+restart needed for this feature; no live session changes performed.
+
+Task 074 replaces Memory with a read-only ~/.claude browser of the local
+container mirror, including hidden files and arbitrary nested folders. No active
+session required. 160 tests pass, three skip; build and both browser fixtures pass.
+User-managed backend restart and refresh required. No real home files accessed.
+
+Task 073 adds the selected launch model to the connected status, including
+shared-session discovery and browser reconnect. 158 tests pass, three skip;
+frontend build and mocked browser checks pass. Restart backend and refresh to
+activate the new metadata. No live session changes or restart performed.
+
+Task 072 adds claude-sonnet-4-6 selection with a 200K deployment window.
+26 focused tests, frontend build and mocked model-picker browser checks pass.
+Restart backend and refresh browser to activate; no live sessions started.
+
+Task 071 corrects Opus 4.6 to the user's 200K deployment window. Only Sonnet 5
+uses 1M by default. 23 focused context tests pass; restart backend to activate.
+
+Task 070 is ready for user-managed restart: model-aware usage denominator uses
+1M for Sonnet 5 and 200K for Haiku 4.5 / Opus 4.6 (task 071 correction), following each captured request
+model. Explicit window overrides win; fallback limits are labeled. 155 tests pass,
+three skip. No stack restart or live session changes performed.
+
+Task 069 is ready for user-managed restart: Start Claude model dialog defaults
+to Haiku, with the requested Sonnet 5 and Opus 4.6 choices. Explicit selection
+applies only to new sessions. 151 tests pass, three skip; browser modal tests
+pass. No real sessions started. Restart backend and refresh browser to activate.
+
+Task 068 is ready for user-managed restart: read-only Workspace tab browses the
+locally mounted workspace without container APIs, including lazy directories,
+hidden files, breadcrumbs and text previews. 149 tests pass, three skip; Workspace
+and Memory browser fixtures pass. No real workspace edits or session restart.
+
+Task 067 is ready for user-managed restart: Generated skills count control,
+background generation and permanent removal of excess synthetic files (no
+backups). Displays actual file count, not Claude registry state. Live skills
+unchanged. 143 tests pass, three skip; both browser count fixtures pass.
+
+Task 065 is ready for user-managed restart: frontend MCP tools input/Apply/Refresh,
+positive integer only and no count/aggregate-size caps. Restart activates the
+new config API and reloads the MCP script; refresh the browser. Live config was
+not changed. 134 tests pass, three unrelated tests skip; browser fixture passes.
+
 Task 064 is ready for user-managed restart: Claude will launch the stdio MCP
 dump script with the workspace config at `.context/mcp-dump/config.json`.
 One tool initially; later count/schema edits emit live notifications without
@@ -75,9 +141,15 @@ The current Claude session has been preserved.
 
 ## Pending tasks
 
-- None currently.
+- [Response rendering volume](docs/tasks/pending/076-response-rendering-volume.md)
 
 ## Open bugs
+
+- [MLflow trace GET 500](docs/bugs/open/mlflow-trace-get-500.md) — trace search and
+  direct artifacts work; v3 trace-detail endpoint failed during inspection.
+
+- [Long response rendering](docs/bugs/open/response-event-rendering-volume.md) —
+  thousands of deltas and duplicated long signatures make the payload view unwieldy.
 
 - [Unrelated request block pairing](docs/bugs/open/unrelated-request-block-pairing.md) —
   chronological fallback can present unrelated same-position blocks as edits.
@@ -90,6 +162,26 @@ The current Claude session has been preserved.
 - [Browser requests a missing favicon](docs/bugs/open/missing-favicon.md)
 
 ## Decisions
+
+- [ADR-0038 — Session trace reset](docs/decisions/ADR-0038-session-trace-reset.md)
+
+- [ADR-0037 — Strace reset and search](docs/decisions/ADR-0037-strace-search-reset.md)
+
+- [ADR-0036 — Claude strace](docs/decisions/ADR-0036-claude-strace.md)
+
+- [ADR-0035 — Response payload viewer](docs/decisions/ADR-0035-response-payload-view.md)
+
+- [ADR-0034 — ~/.claude browser](docs/decisions/ADR-0034-claude-file-browser.md)
+
+- [ADR-0033 — Model-aware context window](docs/decisions/ADR-0033-model-context-window.md)
+
+- [ADR-0032 — Start model dialog](docs/decisions/ADR-0032-start-model-dialog.md)
+
+- [ADR-0031 — Workspace browser](docs/decisions/ADR-0031-workspace-browser.md)
+
+- [ADR-0030 — Generated skill count](docs/decisions/ADR-0030-generated-skill-count.md)
+
+- [ADR-0029 — MCP count control](docs/decisions/ADR-0029-mcp-count-control.md)
 
 - [ADR-0028 — Dynamic stdio MCP](docs/decisions/ADR-0028-dynamic-stdio-mcp.md)
 
@@ -154,6 +246,48 @@ The current Claude session has been preserved.
 - [Request-stream identity investigation](docs/notes/request-stream-identity-investigation.md)
 
 ## Completed setup
+
+- [Clear traces on Start Claude](docs/tasks/done/079-strace-reset-on-start.md) —
+  guarded per-session trace reset and serialized Start/Stop lifecycle.
+
+- [Strace reset and search](docs/tasks/done/078-strace-search.md) — clean startup,
+  read-only cross-file search and path-accurate navigation labels.
+
+- [Claude strace](docs/tasks/done/077-strace-claude.md) — syscall evidence in
+  container/strace/pid.*, tracing image and scoped container permissions.
+
+- [Response payload viewer](docs/tasks/done/075-response-payload-view.md) —
+  full decoded SSE payloads and optional comparison using the request renderer.
+
+- [~/.claude browser](docs/tasks/done/074-claude-file-browser.md) — whole-folder
+  read-only browsing replaces scoped Memory UI; shared Workspace safety limits.
+
+- [Connected model label](docs/tasks/done/073-connected-model-label.md) —
+  session-owned launch model beside connection status, with provenance tooltip.
+
+- [Sonnet 4.6 selection](docs/tasks/done/072-sonnet-46-selection.md) — fourth
+  selectable model, 200K context default; Haiku remains the initial selection.
+
+- [Opus context window](docs/tasks/done/071-opus-context-window.md) — 200K deployment
+  default, corrected provenance and percentage regression.
+
+- [Model-aware context window](docs/tasks/done/070-model-aware-context-window.md) —
+  corrected Sonnet denominator, per-flow model lookup and override preservation.
+
+- [Start model dialog](docs/tasks/done/069-start-model-dialog.md) — modal model
+  selection for new Claude sessions; built/tested, ready for restart.
+
+- [Workspace browser](docs/tasks/done/068-workspace-browser.md) — read-only
+  local workspace listing/preview and top-level navigation; ready for restart.
+
+- [Skill count widget](docs/tasks/done/067-skill-count-widget.md) — generated-file
+  count, background progress and scoped permanent decreases; ready for restart.
+
+- [MCP widget alignment](docs/tasks/done/066-mcp-widget-alignment.md) — controls
+  and status right-aligned; browser tests pass. Refresh to load rebuilt CSS.
+
+- [MCP count widget](docs/tasks/done/065-mcp-count-widget.md) — positive integer
+  control, atomic field-preserving saves, uncapped MCP counts; ready for restart.
 
 - [Dynamic stdio MCP](docs/tasks/done/064-dynamic-stdio-mcp.md) — Python script,
   live config-driven tools, isolated-container validation; ready for restart.

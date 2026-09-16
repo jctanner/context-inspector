@@ -49,7 +49,48 @@ class StartupResetTests(unittest.TestCase):
             self.assertEqual((workspace / 'CLAUDE.md').read_text(), 'preserved')
             self.assertFalse((self.project / 'container/.claude-startup-archives').exists())
         self.assertIn('permanent; no backup', self.output.getvalue())
-        unused.assert_called_once_with(self.home)
+        self.assertEqual([call.args[0] for call in unused.call_args_list],
+                         [self.home, self.project / 'container/strace'])
+
+    @patch('src.server.startup_reset.assert_home_unused')
+    def test_strace_reset_all_contents_without_following_links(self, unused):
+        trace = self.project / 'container/strace'
+        (trace / '.nested').mkdir(parents=True)
+        (trace / '.nested/pid.1').write_text('old trace')
+        (trace / 'pid.2').write_text('old trace')
+        outside = self.file('settings.json', 'preserved')
+        (trace / 'link').symlink_to(outside)
+        with redirect_stdout(self.output), clean_claude_startup():
+            self.assertEqual(list(trace.iterdir()), [])
+            self.assertEqual(trace.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(outside.read_text(), 'preserved')
+            (trace / 'pid.3').write_text('current trace')
+            with self.assertRaisesRegex(RuntimeError, 'Another stack'), clean_claude_startup():
+                pass
+            self.assertTrue((trace / 'pid.3').exists())
+        self.assertIn('Strace startup reset', self.output.getvalue())
+
+    @patch('src.server.startup_reset.assert_home_unused')
+    def test_strace_guards_run_before_any_cleanup(self, unused):
+        trace = self.project / 'container/strace'
+        trace.mkdir()
+        history = self.file('history.jsonl')
+        unused.side_effect = [None, RuntimeError('active trace mount')]
+        with self.assertRaisesRegex(RuntimeError, 'active trace'), clean_claude_startup():
+            pass
+        self.assertTrue(history.exists())
+        unused.side_effect = None
+        trace.rmdir()
+        trace.symlink_to(self.home, target_is_directory=True)
+        with self.assertRaises(OSError), clean_claude_startup():
+            pass
+        self.assertTrue(history.exists())
+
+    def test_strace_mount_guard_rejects_nested_mount(self):
+        trace = self.project / 'container/strace'
+        with patch('pathlib.Path.read_text', return_value=f'1 2 0:1 / {trace}/nested rw - tmpfs tmpfs rw'):
+            with self.assertRaisesRegex(RuntimeError, 'mounted filesystem'):
+                _assert_no_mounted_targets(trace, entire_root=True)
 
     @patch('src.server.startup_reset.assert_home_unused')
     def test_reset_does_not_follow_top_level_or_nested_symlinks(self, unused):

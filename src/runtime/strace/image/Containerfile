@@ -1,0 +1,8 @@
+ARG BASE_IMAGE=localhost/claude-task-runner:latest
+FROM ${BASE_IMAGE}
+USER 0
+RUN if ! command -v strace >/dev/null; then \
+      apt-get update && apt-get install -y --no-install-recommends strace && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi && strace --version
+USER 1000:1000

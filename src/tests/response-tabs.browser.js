@@ -14,11 +14,12 @@ async (page) => {
     purpose: { classification: 'unclassified', confidence: 'none', evidence: [] },
     response: { model: 'fixture-model', message_id: `message-${n}`, stop_reason: 'tool_use', output_tokens: 20,
       content_blocks: [{ type: 'text', text: `Preview ${n}` }] }, exact_response: {} });
+  const sse = n => `event: message_start\r\ndata: ${JSON.stringify({ type: 'message_start', message: { model: 'fixture-model', usage: { input_tokens: n * 100, cache_creation_input_tokens: 20, cache_read_input_tokens: 30 } } })}\r\n\r\n: keepalive\n\nevent: vendor_unknown\ndata: not-json\n\ndata: [DONE]\n\n`;
   const full = n => ({ ...reply(n), detail_url: undefined, response: { ...reply(n).response, content_blocks: [
     { type: 'text', text: `Full response ${n} <img src=x onerror=alert(1)>` },
     { type: 'tool_use', id: `tool-${n}`, name: 'Read', input: { file_path: '/fixture/MEMORY.md' } },
     { type: 'thinking', thinking: 'Fixture thinking', signature: 'fixture-signature' },
-  ] }, exact_response: { status_code: 200, headers: { 'request-id': `request-${n}` }, body: { wire: { encoding: 'base64', data: 'Zml4dHVyZQ==' }, decoded: { kind: 'sse', value: 'data: fixture' } } } });
+  ] }, exact_response: { status_code: 200, headers: { 'request-id': `request-${n}` }, body: { wire: { encoding: 'base64', data: 'Zml4dHVyZQ==' }, decoded: { kind: 'sse', value: sse(n) } } } });
   let fetches = 0, sockets = 0, fail = false, pending, delay = false;
   let markStarted;
   const pendingStarted = new Promise(resolve => { markStarted = resolve; });
@@ -42,6 +43,18 @@ async (page) => {
     const shortcut = n => view.locator(`.group-reply[data-flow-id="f${n}"] .inspect-response`);
     await shortcut(1).click();
     const panel = view.getByRole('tabpanel', { name: 'Response #1', exact: true });
+    await panel.locator('.payload-outline').waitFor();
+    check(await panel.locator('.payload-add, .payload-remove').count() === 0, 'full response lines are neutral');
+    const table = panel.locator('table.payload-diff');
+    check((await table.innerText()).includes('cache_creation_input_tokens'), 'complete token usage available');
+    check((await table.innerText()).includes('not-json') && (await table.innerText()).includes('[DONE]') && (await table.innerText()).includes('keepalive'), 'unknown SSE data retained');
+    check((await panel.locator('.payload-outline').innerText()).includes('Response events'), 'response-specific root label');
+    for (const path of ['/events', '/events/0', '/events/0/data', '/events/0/data/message']) {
+      await panel.locator(`.payload-outline-link[data-path="${path}"]`).locator('..').locator('..').evaluate(el => { el.open = true; });
+    }
+    await panel.locator('.payload-outline-link[data-path="/events/0/data/message/usage"]').click();
+    check((await panel.locator('.payload-target').innerText()).includes('usage'), 'usage TOC jumps to data');
+    await panel.getByRole('button', { name: 'Readable reply & evidence', exact: true }).click();
     await panel.locator('.readable-text').filter({ hasText: 'Full response 1' }).waitFor();
     check((await panel.boundingBox()).width >= 1200, 'response tab must be full width');
     check(await panel.locator('img').count() === 0, 'response text must not execute markup');
@@ -61,7 +74,7 @@ async (page) => {
     await view.getByRole('tab', { name: 'Request #1', exact: true }).waitFor();
     check(await view.getByRole('tab', { name: 'Response #1', exact: true }).count() === 1, 'same request and response must have distinct tabs');
     await view.getByRole('tab', { name: 'Response #1', exact: true }).click();
-    await view.getByRole('button', { name: 'Memory', exact: true }).click();
+    await view.locator('#nav-memory').click();
     await view.getByRole('button', { name: 'Session', exact: true }).click();
     check(await panel.isVisible(), 'main navigation must preserve response tab');
     await view.setViewportSize({ width: 390, height: 844 });
@@ -72,7 +85,25 @@ async (page) => {
     await view.getByRole('tab', { name: 'Live session', exact: true }).click();
     fail = true; await shortcut(2).click();
     await view.getByRole('button', { name: 'Retry', exact: true }).click();
-    await view.getByRole('tabpanel', { name: 'Response #2', exact: true }).getByText('Read', { exact: true }).waitFor();
+    const second = view.getByRole('tabpanel', { name: 'Response #2', exact: true });
+    await second.locator('.payload-outline').waitFor();
+    await second.locator('.response-baseline').selectOption('f1');
+    await second.locator('.payload-remove').first().waitFor();
+    check((await second.locator('.payload-provenance').first().innerText()).includes('No thread relationship inferred'), 'comparison provenance');
+    await second.getByRole('button', { name: 'Next change', exact: true }).click();
+    check(await second.locator('.payload-outline-link[aria-current]').count() === 1, 'change navigation synchronizes outline');
+    await second.getByRole('button', { name: 'Side-by-side', exact: true }).click();
+    await second.locator('.payload-split').waitFor();
+    check((await second.locator('.payload-split').innerText()).includes('200') && (await second.locator('.payload-split').innerText()).includes('100'), 'split shows both usage values');
+    fail = true;
+    await second.locator('.response-baseline').selectOption('');
+    await second.locator('.payload-outline').waitFor();
+    await second.locator('.response-baseline').selectOption('f1');
+    await second.locator('.payload-view').filter({ hasText: 'Selected response baseline unavailable' }).waitFor();
+    await second.getByRole('button', { name: 'Readable reply & evidence', exact: true }).click();
+    await second.getByText('Read', { exact: true }).waitFor();
+    await second.getByRole('button', { name: 'Decoded response events', exact: true }).click();
+    await second.locator('.payload-remove').first().waitFor();
     await view.getByRole('tab', { name: 'Response #2', exact: true }).press('Delete');
     await view.getByRole('tab', { name: 'Live session', exact: true }).click();
     delay = true; await shortcut(2).click();
@@ -83,6 +114,6 @@ async (page) => {
     if (pending) pending();
     check(await view.getByRole('tab', { name: 'Response #2', exact: true }).count() === 0, 'closing pending response must not resurrect its tab');
     check(sockets === 2, 'evidence tabs must not create extra sockets');
-    return { lazy: true, independentTabs: true, groupedAccess: true, fullWidth: true, toolCalls: true, exactEvidence: true, safeText: true, retry: true, closePending: true, mobile: true };
+    return { payload: true, usageOutline: true, comparison: true, split: true, baselineRetry: true, lazy: true, independentTabs: true, groupedAccess: true, fullWidth: true, toolCalls: true, exactEvidence: true, safeText: true, retry: true, closePending: true, mobile: true };
   } finally { if (pending) pending(); await context.close(); }
 }

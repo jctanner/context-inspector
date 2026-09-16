@@ -162,12 +162,24 @@ class MCPDumpTests(unittest.TestCase):
     def test_validation_and_determinism(self):
         for changes in ({"tool_count": -1}, {"tool_count": True}, {"seed": "42"},
                         {"schema_properties": 101}, {"description_words": 2001},
-                        {"tool_count": 10000, "description_words": 2000, "schema_properties": 100},
                         {"extra": 1}):
             with self.assertRaises(ValueError):
                 validate_config({**DEFAULT_CONFIG, **changes})
         self.assertEqual(tool_definition(DEFAULT_CONFIG, 1), tool_definition(DEFAULT_CONFIG, 1))
         self.assertNotEqual(tool_definition(DEFAULT_CONFIG, 1), tool_definition(DEFAULT_CONFIG, 2))
+
+    def test_large_count_names_and_cursors(self):
+        from src.runtime.mcp_dump.server import ConfigState, Server
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            write_config(path, tool_count=200000)
+            state = ConfigState(path)
+            self.assertTrue(state.refresh())
+            server = Server(state)
+            page = server.list_tools({"cursor": f"{state.revision}:100000"})
+            self.assertEqual(page["tools"][0]["name"], "dump_tool_100001")
+            self.assertFalse(server.call_tool({"name": "dump_tool_100001"})["isError"])
+            self.assertEqual(validate_config({**DEFAULT_CONFIG, "tool_count": 100000})["tool_count"], 100000)
 
     def test_protocol_errors(self):
         with tempfile.TemporaryDirectory() as directory, running(directory) as (client, config):

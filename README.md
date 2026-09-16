@@ -124,6 +124,57 @@ Export timing is verified against the pinned Stop-hook implementation and
 [Claude's hook semantics](https://code.claude.com/docs/en/hooks-guide), which are
 more specific than the MLflow guide's session-end wording.
 
+## Workspace file browser
+
+Open **Workspace** beside Session and ~/.claude to browse the local directory
+mounted at `/workspace` (normally `container/workspace`, or the configured
+`CONTEXT_INSPECTOR_WORKSPACE`). It works even when Claude is stopped. Folders
+load on demand, include hidden entries, and offer **Load more entries** for
+large directories. Breadcrumb buttons navigate back; **Refresh workspace**
+reloads the current directory and selected file.
+
+The viewer is read-only: file name/path, byte size, modified time, and exact
+UTF-8 source up to 1 MiB. HTML/Markdown is shown as text, never executed or
+rendered. Binary/non-UTF-8 and oversized files get explicit preview errors;
+symlinks, hard-linked files and special files cannot be opened. There are no
+upload, edit, delete or download endpoints. Reads are confined to the configured
+workspace and use the local filesystem, not container APIs.
+
+This exposes workspace source, dotfiles and any secrets stored there to users
+of the existing unauthenticated development UI. Restrict stack access to trusted
+machines. File previews are current local snapshots, not proof of model context.
+Restart the stack once for the new GET endpoints, then refresh the browser.
+
+## Generated skill count
+
+The **Generated skills** widget beside MCP tools shows the current generated
+file count and provides **Apply** and **Refresh**. Enter a positive integer;
+there is no application count ceiling. Increasing it generates missing skills
+with the same defaults as `./scripts/skill-maker.py`: random 500–5,000 total
+lines, 96 description words, and 20 words per body line.
+
+Lowering the count **permanently deletes excess generated skills**, highest
+numbers first. There are no backups or restore mechanism; increase the count
+or use the generator to create new files later. Retained files are unchanged.
+Only canonical `skill-dump-NNNN` directories under
+`container/workspace/.context/skill-dump/.claude/skills` are managed. Matching
+directories must contain only a recognized generated `SKILL.md`; foreign
+contents, extra files and unsafe links block changes. Other project skills
+are not counted or changed.
+
+Updates run in the background; the widget polls progress once a second and
+reconnects to an in-progress update after page refresh. One job runs per server
+at a time. Generation may consume significant time and disk space. Errors or
+shutdown can leave a partially completed update; completed files/deletions
+remain, and Refresh reads the resulting inventory. Restart stops generation
+between files, not by rolling back or archiving results.
+
+This count is **on-disk files, not Claude's registered skills or model-visible
+tokens**. Claude may need discovery or `/reload-skills`, and skill descriptions
+remain subject to its listing budget. A user-managed stack restart activates
+the new API, followed by a browser refresh. The existing CLI remains available;
+its implementation is shared under `src/runtime/skill_dump/generator.py`.
+
 ## Dynamic MCP tool experiment
 
 New Claude sessions launch a Python **stdio** MCP server named `mcp-dump`.
@@ -158,10 +209,21 @@ until corrected. A missing file is created with the one-tool default only at
 server startup; an existing file is never overwritten. Workspace configuration
 survives the stack's Claude-history cleanup.
 
-All four keys are required, and values must be integers. Limits: `tool_count`
-0–10,000; `description_words` 0–2,000; `schema_properties` 0–100; `seed`
+The frontend navigation has an **MCP tools** input with **Apply** and **Refresh**.
+It accepts positive integers with no count ceiling and changes only `tool_count`.
+Saves preserve the other config fields and use atomic replacement; conflicting
+external edits produce an error asking you to refresh. The displayed count is
+configured state, not confirmation of Claude's live tool inventory. Restart the
+stack once to activate the API and remove caps from the existing MCP process.
+
+All four keys are required by the MCP script, and values must be integers.
+`tool_count` has no upper limit (direct file edits still permit zero).
+Other file-managed limits remain: `description_words` 0–2,000;
+`schema_properties` 0–100; `seed`
 0–4,294,967,295. Each optional string property has 16 random description words.
-A conservative 64 MB aggregate-metadata estimate also bounds combinations.
+The previous 10,000-tool and 64 MB aggregate-metadata caps have been removed.
+Very large counts can take substantial time/memory and may hit Claude's own
+limits; saving a large value does not guarantee the client will load it.
 Tools have stable names (`dump_tool_00001`, etc.) and seeded content; changing
 only the count leaves surviving definitions identical. Calls validate their
 arguments and return a short synthetic success without side effects or argument
@@ -271,6 +333,51 @@ projects into the interpreted context view without replacing the raw capture.
 
 ## Run the current prototype
 
+### Claude syscall tracing
+
+New Claude containers run under `strace -ffttv -A -o /strace/pid`. The project
+directory `container/strace` is bind-mounted at `/strace`; each traced process or
+thread writes `pid.<PID>`. `-A` appends instead of truncating reused PID files, so
+files can contain reused PIDs within one Claude session. Normal stack startup
+and Start Claude (when creating a new session) permanently clear all contents of
+`container/strace`, with no backups. Stop leaves traces available for inspection;
+reconnecting to an active session does not clear them. A cleanup safety failure
+prevents the new session from launching; stop any lingering container and retry.
+The startup lock and active-container/mount checks protect against clearing live logs.
+
+The `/strace` frontend tab searches literal, case-sensitive text across local log
+files and shows `filename:line` matches. It includes hidden entries, skips links
+and special files, and does not need an active session. Searches stop at 500
+matches, 128 MiB, five seconds or 10,000 entries; lines over 64 KiB are skipped.
+Incomplete searches are labeled. Submit again for new log data; use offline search
+when you need an exhaustive scan beyond those limits.
+
+The launcher builds a cached strace image layer over the selected agent image,
+including MLflow's Node layer when enabled. Only the Claude container receives
+`SYS_PTRACE`; default seccomp and SELinux remain enabled. Trust bootstrap runs
+first, then both strace and Claude execute as UID/GID 1000. No privileged container,
+host ptrace changes, or tracing of the proxy/readiness probe is used.
+
+**Trace logs are sensitive and potentially large:** syscall arguments can expose
+environment variables, credentials and file data. The directory is private (0700),
+new logs are 0600, and `/container/` is git-ignored. Tracing can significantly slow
+Claude. Set `CONTEXT_INSPECTOR_STRACE_ENABLED=0` in `.env` to disable tracing for
+new containers (no mount or extra capability). Keep traces private and manage disk
+usage manually. The requested flags retain strace's default string abbreviation;
+syscalls show filesystem activity, not named internal skill-registry operations.
+
+### Starting a session
+
+**Start Claude** opens a model picker: `claude-haiku-4-5` (default),
+`claude-sonnet-5`, `claude-sonnet-4-6`, or `claude-opus-4-6`. Confirm with **Start session**;
+Cancel/Escape creates nothing. The choice affects only a new session, not the
+configured server default or an existing shared session. Reconnect rejoins the
+existing session without a picker. Model IDs are passed verbatim; availability
+depends on the configured provider. The connected status includes the session's
+selected launch model, also after refresh/reconnect; it does not track later
+`/model` changes. Restart the backend once after this upgrade
+so it accepts the model field, then refresh the frontend.
+
 From this directory:
 
 ```bash
@@ -342,13 +449,20 @@ the complete per-request content. Request inspection opens a full-width in-app
 stays pinned and connected, with a new-request badge during background activity.
 Opening the same request selects its existing tab and preserves the selected view.
 **Read full reply & response evidence** opens a separate, closable `Response #N`
-tab with the complete reply and tool calls, plus thinking and exact-response
-evidence disclosures. Request and response tabs can coexist for the same call.
+tab defaulting to **Decoded response events**, using the same full payload viewer,
+left-hand outline and inline/side-by-side layouts as requests. Expand `events`,
+the `message_start` record, `data`, `message`, then `usage` to inspect token counts.
+These are parsed SSE records, not an original single JSON response; raw fields,
+unknown events and non-JSON data remain visible. With no comparison selected,
+lines are neutral. **Compare with** optionally diffs against an earlier response
+in loaded history; this is an explicit choice, not a confirmed thread relationship.
+**Readable reply & evidence** shows the complete reply, tool calls, thinking and
+original SSE/wire evidence. Request and response tabs can coexist for the same call.
 Reopening a response selects its existing tab without refetching; closing a
 loading tab cancels its fetch. Response inspection is also available directly
 from collapsed matching-request groups. It does not alter the live summary or
 its token accounting.
-The default is a complete GitHub-style unified diff: red/green lines, before/after line numbers,
+The request tab default is a complete GitHub-style unified diff: red/green lines, before/after line numbers,
 and Previous/Next change navigation. It compares pretty-printed decoded JSON
 bodies with the recorded baseline; unchanged lines remain visible without
 expanding blocks. This is not a byte-for-byte wire-format diff. Missing baseline
@@ -377,8 +491,11 @@ capture. The server builds its context index once per session and shares it acro
 browsers; the first scan may take longer than subsequent refreshes. The browser
 falls back to full replay when connected to an older server without this API.
 
-The utilization meter defaults to a configured 200,000-token window. Override
-that denominator for a different enabled model/window configuration:
+The utilization meter resolves the captured request model on each flow: Haiku
+4.5, Sonnet 4.6 and Opus 4.6 use 200K; only Sonnet 5 uses 1M. These are deployment defaults, not
+wire-observed limits. Model IDs in the request body or provider URL take priority
+over the launch model fallback. Unknown models use an explicitly unverified
+200K fallback. An explicit override takes priority over all model detection:
 
 ```bash
 CONTEXT_INSPECTOR_CONTEXT_WINDOW_TOKENS=1000000 ./src/bin/context-inspector
@@ -401,15 +518,18 @@ The project-local mirror maps directly to container paths:
 | `container/home/evaluator/.claude/` | `/home/evaluator/.claude/` |
 | `container/home/evaluator/.claude.json` | `/home/evaluator/.claude.json` |
 
-**Session / Memory** navigation keeps request tabs in Session. Memory provides
-a read-only file tree and Markdown source viewer with path, size, modified time
-and **Refresh memory**. It reads directly from the local mirror—no container API
-calls. Only `CLAUDE.md` and `projects/*/memory/**/*.md` are exposed; credentials,
-settings and transcripts are excluded. Symlinks/hardlinks and nonregular files
-are rejected; reads are limited to 1 MiB and listings to 500 files/5,000 entries.
-No create, edit, rename or delete operations exist. Files are current disk
-snapshots, not evidence of which memory the model has loaded. An active session
-is required by the API. Switching sections keeps existing live sockets connected.
+**Session / ~/.claude / Workspace** navigation keeps request tabs in Session.
+The **~/.claude** tab browses the entire local `container/home/evaluator/.claude`
+mirror—not your host's `~/.claude`—without container API calls or an active session.
+Navigate into `projects/<project>/memory` to view memories. Hidden files, settings
+and transcripts are included; credentials and other sensitive text may be exposed
+to anyone with access to this unauthenticated application. Use a trusted network.
+Folders load on demand with pagination, breadcrumbs and **Refresh folder**.
+Both browsers share exact UTF-8 text previews up to 1 MiB, metadata, and refusal
+to follow symlinks or open hardlinks/special files. No create, edit, rename or
+delete operations exist. Current disk contents are not evidence of model ingestion.
+Switching sections preserves browsing state and live sockets. The old scoped
+memory API remains for compatibility, but is no longer used by the frontend.
 
 When upgrading from the old layout, stop the stack only **after** backing up
 the live container's actual `/home/evaluator/.claude` and `.claude.json`: the

@@ -1,5 +1,150 @@
 # Session Log
 
+## 2026-09-15 — Clear strace on Start Claude
+
+- Task 079: added trace-only reset before new real API sessions. Shared-session
+  joins and Stop preserve logs; home and workspace are untouched.
+- Start now awaits guarded cleanup, so Start/Stop share a lifecycle lock to
+  prevent duplicate starts or deletion during shutdown. Cleanup failures block
+  launch. ADR-0038 records the boundary and cancellation handling.
+- Tests use temporary fixtures; no live logs removed or stack restarted.
+- Verified 175 passing tests / three unrelated skips, frontend build and diff
+  checks. Task 079 complete; user-managed backend restart activates the behavior.
+
+## 2026-09-15 — Strace search and clean startup
+
+- Task 078 extends the existing startup lock and guards to the strace mirror.
+  Both roots are validated before permanent deletion; no backups requested.
+- Added bounded, literal, read-only cross-file search and /strace navigation;
+  Workspace navigation now says /workspace. ADR-0037 records retention and limits.
+- Validation uses synthetic fixtures only; no live logs deleted or stack restarted.
+- Full regression: 170 pass / three unrelated skips; final 17 focused tests pass.
+  Build and all three file-navigation browser fixtures pass, including mobile.
+  Browser fixtures served assets without starting the stack; browser closed.
+
+## 2026-09-15 — Container strace
+
+- Task 077: base Debian image lacks strace. Added cached derived image, scoped
+  SYS_PTRACE, ignored local /strace mirror and non-root Claude wrapper.
+- Preserve requested -ffttv/-o flags; add -A to avoid silent PID-file truncation.
+  MLflow/MCP configuration happens before wrapping; probes remain untraced.
+- ADR-0036 documents sensitive logs, performance and disabled-mode behavior.
+- No live stack restart or process attachment; isolated validation in task 077.
+
+## 2026-09-15 — Response #56 rendering diagnosis
+
+- Verified 2,102 SSE records / 2,092 deltas render as 35,737 rows; one signature
+  contains 11,144 characters and is duplicated in raw_fields. Rendering granularity
+  and opaque values explain the unwieldy view; ancillary attribution is unconfirmed.
+- Recorded bug and pending task 076. No implementation or live session changes;
+  isolated inspection browser closed, no captured content committed.
+
+## 2026-09-15 — Response payload viewer
+
+- Task 075 reuses the worker-backed request payload renderer for complete decoded
+  response events, neutral by default, with optional earlier-response comparison.
+- Usage is navigable in the outline; unknown/non-JSON events and raw SSE fields
+  remain visible. Readable reply and original raw/wire evidence remain available.
+- ADR-0035 records decoded representation and explicit comparison provenance.
+- Synthetic browser tests only; no live prompts, capture edits or stack restart.
+
+## 2026-09-15 — ~/.claude read-only browser
+
+- Task 074 replaces scoped Memory UI with whole-folder browsing of the container
+  mirror, independent of session state. Shared Workspace controls keep separate
+  navigation state and reuse its confined no-follow reader and preview limits.
+- Dotfiles, settings/history and credentials are in scope; added a sensitive-data
+  notice. ADR-0034 records this expansion and compatibility of legacy memory APIs.
+- Retired the old Memory frontend component and replaced its browser fixture;
+  no user files removed or read. Validation recorded in task 074.
+
+## 2026-09-15 — Connected session model label
+
+- Task 073 exposes selected_model from actual session argv on creation and
+  discovery/status; frontend retains it on reconnect and reloads it on refresh.
+- Label identifies launch selection, not inferred current routing. Missing
+  metadata does not guess Haiku or echo a possibly stale browser selection.
+- ADR-0032 amended; synthetic API and browser checks recorded in task 073.
+- No live session changes or stack restart.
+
+## 2026-09-15 — Sonnet 4.6 selection
+
+- Task 072 adds claude-sonnet-4-6 to the modal and backend allowlists, preserving
+  Haiku as default and assigning the requested 200K deployment context window.
+- Updated selection, provider-ID, percentage and launch-fallback regressions;
+  amended ADRs 0032/0033. Validation is recorded in task 072.
+- No live Claude session creation or stack restart.
+
+## 2026-09-15 — Opus deployment window correction
+
+- Task 071: user clarified Opus 4.6 uses 200K in this stack. Corrected the
+  model mapping and provider-ID expectations; Sonnet 5 alone remains at 1M.
+- Changed provenance to deployment model defaults; general capability docs
+  do not establish the enabled window. ADR-0033 amended accordingly.
+- Added an Opus percentage/override regression. No stack restart or live edits.
+
+## 2026-09-15 — Start Claude model picker
+
+- Task 069 / ADR-0032: native dialog offers the exact requested Haiku/Sonnet/Opus
+  IDs with Haiku selected on each opening. Cancel/Escape creates nothing;
+  pending guard and inline errors support safe retry.
+- Validated optional API field supplies a single new-session --model argument;
+  omitted field preserves configured default and active sessions remain shared.
+- 154 tests: 151 pass, three unrelated opt-in tests skipped. Build, whitespace
+  and mocked-session Playwright modal fixture pass. No real sessions started;
+  browser closed. User-managed restart and browser refresh activate the change.
+
+## 2026-09-15 — Read-only Workspace browser
+
+- Task 068 / ADR-0031: Workspace navigation, lazy paginated directories,
+  dotfiles, breadcrumbs, refresh and exact text previews from settings.workspace.
+  No active Claude session needed; no container APIs or write endpoints.
+- Descriptor-relative no-follow reads restrict scope; symlinks/hardlinks and
+  special files are unavailable. Binary and >1 MiB preview errors are explicit.
+  Source rendered with textContent, never Markdown/HTML execution.
+- 152 tests: 149 pass, three unrelated opt-in tests skipped. Build and whitespace
+  pass; synthetic Workspace and Memory Playwright fixtures pass (corrected a
+  fixture-only URL-global incompatibility before rerun).
+- No live workspace files changed or stack restarted. Browser closed. User
+  restart activates new APIs, then browser refresh loads Workspace navigation.
+
+## 2026-09-15 — Generated skill count widget
+
+- Task 067 / ADR-0030: added count/Apply/Refresh beside MCP tools, background
+  updates and polling. Shared generator keeps CLI behavior and 500–5,000-line
+  defaults. Displays on-disk count, never confirmed Claude registration.
+- User rejected backup/restoration: decreases permanently remove only recognized
+  generated SKILL.md files and their empty directories, retaining other files.
+  No-follow access, exclusive publication, revisions, mutation headers and
+  one-job-per-app locking protect the scoped operation. No count cap.
+- 146 regression tests run: 143 passed, three unrelated MLflow tests skipped.
+  Production build, whitespace and both mocked-API browser count fixtures pass.
+- No live skills or MCP configuration changed; no stack restart. Browser closed.
+  User restart activates API, then browser refresh loads the controls.
+
+## 2026-09-15 — MCP widget right alignment
+
+- Task 066: status text widened the form while controls remained left-aligned
+  internally. Fixed with flex-end alignment and right-aligned status text.
+- Build and synthetic Playwright fixture pass, including geometric right-edge
+  assertions at desktop/mobile sizes and long messages. No live config edits or
+  stack restart. Browser closed; refresh loads rebuilt CSS.
+
+## 2026-09-14 — Frontend MCP tool count control
+
+- Task 065 / ADR-0029: top-nav count input, Apply and Refresh; only positive
+  integer validation with decimal strings to preserve precision. Removed MCP
+  tool-count and aggregate-metadata caps; extended names/cursors past five digits.
+- Fixed-path API preserves other JSON fields, replaces atomically and rejects
+  stale revisions, unsafe file paths and cross-origin form-style writes.
+  Saved config is explicitly not reported as confirmed Claude reload.
+- 137 regression tests run: 134 passed, three unrelated MLflow integration
+  tests skipped. Build, whitespace, and Playwright mocked-API desktop/mobile
+  fixture pass. Initial sandbox-restricted async test was interrupted and
+  retried outside the sandbox; final suite completed successfully.
+- No live config edits or stack restart. Browser closed. User restart needed
+  for backend endpoints and new MCP process code, then browser refresh.
+
 ## 2026-09-14 — Dynamic stdio MCP experiment
 
 - Task 064: implemented a dependency-free Python stdio MCP server with a
@@ -863,3 +1008,11 @@ Next:
 - Documented remote URL access and the unauthenticated-tool security boundary.
 - Configuration tests pass, including rejection of unapproved non-loopback
   addresses.
+## 2026-09-15 — Model-aware context window (task 070)
+
+- Fixed the static 200K denominator behind Sonnet's reported 100% usage.
+- Per-flow body/provider model lookup covers model switches and response order;
+  launch fallback and unknown 200K fallback are explicitly labeled, overrides win.
+- Both decoded SSE and compressed replay use the same resolver; observed token
+  counts are unchanged. ADR-0033 records catalog provenance and limitations.
+- No stack restart or live session mutation. Validation recorded in task 070.

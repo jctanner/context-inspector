@@ -9,7 +9,7 @@ export function payloadOutline(value: unknown): PayloadNode | null {
     const container = value !== null && typeof value === "object";
     const entries = container ? Object.entries(value) : [];
     const record = container && !Array.isArray(value) ? value as Record<string, unknown> : {};
-    const hint = [record.role, record.type, record.name].filter(v => typeof v === "string").join(" · ").slice(0, 80);
+    const hint = [record.role, record.type, record.name, record.event].filter(v => typeof v === "string").join(" · ").slice(0, 80);
     const shape = Array.isArray(value) ? `[${entries.length}]` : container ? `{${entries.length}}` : value === null ? "null" : typeof value;
     const node: PayloadNode = { label: `${key} ${shape}${hint ? ` · ${hint}` : ""}`, path, line: line++, endLine: 0, children: [] };
     for (const [childKey, child] of entries) {

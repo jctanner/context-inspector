@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from src.protocol.events import ProtocolError, validate_event
 from src.server.identity import classify_request_stream
+from src.server.context_window import resolve_window
 
 
 def _canonical(value: Any) -> bytes:
@@ -444,11 +445,20 @@ def decode_response_bytes(raw: bytes, content_encoding: str) -> str | None:
 class ContextEventStream:
     """Tail raw events while maintaining the comparison baseline for replay."""
 
-    def __init__(self, path, session_id: str, context_window_tokens: int = 200_000, context_window_source: str = "configured default from experiment baseline") -> None:
+    def __init__(self, path, session_id: str, context_window_tokens: int | None = None, context_window_source: str = "configured override", *, fallback_model: str | None = None) -> None:
         self.path = path
         self.session_id = session_id
         self.context_window_tokens = context_window_tokens
         self.context_window_source = context_window_source
+        self.fallback_model = fallback_model
+
+    def usage_window(self, snapshot: ContextSnapshot, total: int) -> dict[str, Any]:
+        window, source = resolve_window(
+            snapshot.exact_request, override=self.context_window_tokens,
+            override_source=self.context_window_source, fallback_model=self.fallback_model,
+        )
+        return {"context_window_tokens": window, "context_window_source": source,
+                "percent": min(100.0, total / window * 100)}
 
     async def events(self, after: int = 0, *, mark_ready: bool = False):
         offset = 0
@@ -510,9 +520,7 @@ class ContextEventStream:
                                                 "kind": "context.usage", "flow_id": flow_id, "sequence": event["sequence"],
                                                 "stream_identity": snapshot.stream_identity,
                                                 "used_input_tokens": total, "components": usage,
-                                                "context_window_tokens": self.context_window_tokens,
-                                                "context_window_source": self.context_window_source,
-                                                "percent": min(100.0, total / self.context_window_tokens * 100),
+                                                **self.usage_window(snapshot, total),
                                                 "usage_source": "wire_response_sse_usage",
                                             }
                             if kind == "flow.completed" and flow_id in request_by_flow and flow_id not in usage_emitted:
@@ -528,9 +536,7 @@ class ContextEventStream:
                                                     "kind": "context.usage", "flow_id": flow_id, "sequence": event["sequence"],
                                                     "stream_identity": snapshot.stream_identity,
                                                     "used_input_tokens": total, "components": usage,
-                                                    "context_window_tokens": self.context_window_tokens,
-                                                    "context_window_source": self.context_window_source,
-                                                    "percent": min(100.0, total / self.context_window_tokens * 100),
+                                                    **self.usage_window(snapshot, total),
                                                     "usage_source": "wire_response_sse_usage_reassembled",
                                                 }
                             if kind == "flow.completed" and flow_id in request_by_flow:

@@ -22,7 +22,8 @@ last valid configuration on invalid edits or missing files. An initially invalid
 file produces an empty list until corrected. Zero tools explicitly clears the
 inventory. Stable per-tool seeds prevent count changes from changing surviving
 definitions. Cursors identify the configuration and reject stale pagination.
-Bounds on inputs and aggregate metadata limit accidental memory/CPU exhaustion.
+Originally bounded inputs and aggregate metadata. ADR-0029 removes count and
+aggregate-size caps at the user's request; other file-managed limits remain.
 
 ## Consequences
 

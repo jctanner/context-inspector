@@ -1,12 +1,21 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { MemoryView } from "./memory";
+import { WorkspaceView } from "./workspace";
+import { setupStrace } from "./strace";
+import { StartDialog } from "./start-dialog";
+import { setupMcpCount } from "./mcp-count";
+import { setupSkillCount } from "./skill-count";
 import "@xterm/xterm/css/xterm.css";
 import "./style.css";
 import { disclosure, readableBlock, readableChange, readableValue } from "./readable";
 import { FastContext } from "./fast-context";
 import { RequestTabs } from "./request-tabs";
 import { addPayloadDiff } from "./payload-diff";
+import { addResponsePayload, type ResponseChoice } from "./response-payload";
+
+setupMcpCount();
+setupSkillCount();
+setupStrace();
 
 const terminalElement = document.querySelector<HTMLDivElement>("#terminal")!;
 const startButton = document.querySelector<HTMLButtonElement>("#start")!;
@@ -68,20 +77,42 @@ terminal.loadAddon(fit);
 terminal.open(terminalElement);
 
 let sessionId: string | null = null;
-const memoryView = new MemoryView(() => sessionId);
+let selectedSessionModel: string | null = null;
+const memoryView = new WorkspaceView("memory", "/api/claude-files", "~/.claude");
 const sessionSection = document.querySelector<HTMLElement>("#session-section")!;
 const memorySection = document.querySelector<HTMLElement>("#memory-section")!;
 const navSession = document.querySelector<HTMLButtonElement>("#nav-session")!;
 const navMemory = document.querySelector<HTMLButtonElement>("#nav-memory")!;
+const workspaceView = new WorkspaceView();
+const filesSection = document.querySelector<HTMLElement>("#workspace-section")!;
+const navWorkspace = document.querySelector<HTMLButtonElement>("#nav-workspace")!;
+const traceSection = document.querySelector<HTMLElement>("#strace-section")!;
+const navStrace = document.querySelector<HTMLButtonElement>("#nav-strace")!;
 navSession.onclick = () => {
+  traceSection.hidden = true; navStrace.removeAttribute("aria-current");
+  filesSection.hidden = true; navWorkspace.removeAttribute("aria-current");
   sessionSection.hidden = false; memorySection.hidden = true;
   navSession.setAttribute("aria-current", "page"); navMemory.removeAttribute("aria-current");
   requestTabs.resume();
 };
 navMemory.onclick = () => {
+  traceSection.hidden = true; navStrace.removeAttribute("aria-current");
+  filesSection.hidden = true; navWorkspace.removeAttribute("aria-current");
   sessionSection.hidden = true; memorySection.hidden = false;
   navMemory.setAttribute("aria-current", "page"); navSession.removeAttribute("aria-current");
   memoryView.show();
+};
+navWorkspace.onclick = () => {
+  traceSection.hidden = true; navStrace.removeAttribute("aria-current");
+  sessionSection.hidden = true; memorySection.hidden = true; filesSection.hidden = false;
+  navSession.removeAttribute("aria-current"); navMemory.removeAttribute("aria-current");
+  navWorkspace.setAttribute("aria-current", "page"); workspaceView.show();
+};
+navStrace.onclick = () => {
+  sessionSection.hidden = true; memorySection.hidden = true; filesSection.hidden = true;
+  for (const nav of [navSession, navMemory, navWorkspace]) nav.removeAttribute("aria-current");
+  traceSection.hidden = false; navStrace.setAttribute("aria-current", "page");
+  document.querySelector<HTMLInputElement>("#strace-query")!.focus();
 };
 let socket: WebSocket | null = null;
 let flowSocket: WebSocket | null = null;
@@ -90,6 +121,7 @@ let visibleRowCount = 0;
 let splitPercent = 50;
 const responseRows = new Map<string, ResponseRow>();
 const usageByFlow = new Map<string, ContextUsage>();
+const responseChoices = new Map<string, ResponseChoice>();
 const internalFlows = new Set<string>();
 const requestRows = new Map<string, HTMLLIElement>();
 let latestRequestFlowId: string | null = null;
@@ -199,6 +231,7 @@ type ResponseRow = {
 
 function setStatus(text: string, state: "idle" | "active" | "error" = "idle"): void {
   statusElement.textContent = text;
+  statusElement.title = "";
   statusElement.dataset.state = state;
 }
 
@@ -221,7 +254,7 @@ function forgetSession(): void {
   if (sessionId !== null) localStorage.removeItem(`${CONTEXT_CURSOR_PREFIX}${sessionId}`);
   localStorage.removeItem(SESSION_STORAGE_KEY);
   sessionId = null;
-  memoryView.sessionChanged();
+  selectedSessionModel = null;
   startButton.disabled = false;
   startButton.textContent = "Start Claude";
   stopButton.disabled = true;
@@ -234,6 +267,7 @@ function resetContextView(): void {
   visibleRowCount = 0;
   responseRows.clear();
   usageByFlow.clear();
+  responseChoices.clear();
   internalFlows.clear();
   requestRows.clear();
   latestRequestFlowId = null;
@@ -574,6 +608,7 @@ function renderContextResponse(response: ContextResponse): void {
   const inspect = document.createElement("button"); inspect.type = "button"; inspect.className = "inspect-response secondary-button";
   inspect.textContent = "Read full reply & response evidence";
   const owner = sessionId, number = item.dataset.order!;
+  responseChoices.set(response.flow_id, { number: Number(number), response });
   inspect.onclick = () => requestTabs.open(`${owner}:${response.flow_id}`, number, async (panel, signal) => {
     let detail = response;
     if (response.detail_url) {
@@ -583,7 +618,8 @@ function renderContextResponse(response: ContextResponse): void {
     }
     if (signal.aborted) return;
     const content = responseSection(detail, true); content.classList.add("response-detail");
-    panel.replaceChildren(content);
+    addResponsePayload(panel, content, detail, [...responseChoices.values()]
+      .filter(choice => choice.number < Number(number) && owner === sessionId).sort((a, b) => b.number - a.number), signal);
   }, "Response");
   section.append(inspect);
   item.append(section);
@@ -782,6 +818,7 @@ function connectFlowSocket(id: string, scheme: string, recovering = false): void
 
 function clearContextHistory(): void {
   if (sessionId === null) return;
+  responseChoices.clear();
   resetReadingState();
   localStorage.setItem(`${CONTEXT_CURSOR_PREFIX}${sessionId}`, String(latestContextSequence));
   responseRows.clear();
@@ -795,9 +832,9 @@ function clearContextHistory(): void {
   if (compactView) startContextConnection(sessionId, location.protocol === "https:" ? "wss" : "ws");
 }
 
-function connectSession(id: string): void {
+function connectSession(id: string, selectedModel: string | null = null): void {
   sessionId = id;
-  memoryView.sessionChanged();
+  selectedSessionModel = selectedModel;
   localStorage.setItem(SESSION_STORAGE_KEY, id);
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   startContextConnection(id, scheme);
@@ -810,7 +847,8 @@ function connectSession(id: string): void {
     startButton.disabled = true;
     startButton.textContent = "Connected";
     stopButton.disabled = false;
-    setStatus("Claude connected", "active");
+    setStatus(selectedModel ? `Claude connected · ${selectedModel}` : "Claude connected", "active");
+    statusElement.title = selectedModel ? "Model selected at session launch; changes made with /model are not reflected here." : "";
     sendResize();
     if (requestTabs.isLive) terminal.focus();
   });
@@ -842,7 +880,7 @@ function connectSession(id: string): void {
   });
 }
 
-async function startSession(): Promise<void> {
+async function startSession(model: string): Promise<string | null> {
   startButton.disabled = true;
   terminal.clear();
   setStatus("Starting containers…", "active");
@@ -850,15 +888,18 @@ async function startSession(): Promise<void> {
     const response = await fetch("/api/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ extra_args: [] }),
+      body: JSON.stringify({ extra_args: [], model }),
     });
     if (!response.ok) throw new Error(await response.text());
-    const created = await response.json() as { session_id: string };
+    const created = await response.json() as { session_id: string; selected_model?: string | null };
     resetContextView();
-    connectSession(created.session_id);
+    connectSession(created.session_id, created.selected_model ?? null);
+    return null;
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Could not start session", "error");
+    const message = error instanceof Error ? error.message : "Could not start session";
+    setStatus(message, "error");
     forgetSession();
+    return message;
   }
 }
 
@@ -884,7 +925,7 @@ async function resumePersistedSession(): Promise<void> {
   try {
     const response = await fetch("/api/sessions/active", { cache: "no-store" });
     if (!response.ok) throw new Error("Could not discover shared session");
-    const active = await response.json() as { session_id: string; alive: boolean } | null;
+    const active = await response.json() as { session_id: string; alive: boolean; selected_model?: string | null } | null;
     if (sessionId !== null) return;
     if (!active?.alive) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -893,7 +934,7 @@ async function resumePersistedSession(): Promise<void> {
     }
     resetContextView();
     setStatus("Joining shared session…", "active");
-    connectSession(active.session_id);
+    connectSession(active.session_id, active.selected_model ?? null);
   } catch (error) {
     if (sessionId === null) setStatus(error instanceof Error ? error.message : "Session discovery failed", "error");
   } finally {
@@ -908,13 +949,14 @@ terminal.onData((data) => {
 });
 
 new ResizeObserver(sendResize).observe(terminalElement);
+const startDialog = new StartDialog(startSession);
 startButton.addEventListener("click", () => {
   if (sessionId !== null) {
     terminal.clear();
     resetContextView();
-    connectSession(sessionId);
+    connectSession(sessionId, selectedSessionModel);
   }
-  else void startSession();
+  else startDialog.show();
 });
 stopButton.addEventListener("click", () => void stopSession());
 clearHistoryButton.addEventListener("click", clearContextHistory);

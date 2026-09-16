@@ -139,9 +139,11 @@ source "${runtime_dir}/mlflow-env.sh"
 configure_claude_tracing
 source "${runtime_dir}/mcp-dump-env.sh"
 configure_mcp_dump
+source "${runtime_dir}/strace-env.sh"
+configure_strace
 set -- "${tracing_args[@]}" "${mcp_dump_args[@]}" "$@"
 podman run --rm -it --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 --user 0 --workdir /workspace \
-    --entrypoint bash "${agent_env[@]}" "${mounts[@]}" "${bootstrap_mount[@]}" "${agent_image}" \
+    --entrypoint bash "${agent_env[@]}" "${mounts[@]}" "${bootstrap_mount[@]}" "${strace_options[@]}" "${agent_image}" \
     /context-inspector-entrypoint.sh "${agent_command}" "$@"
 
 if ! podman cp "${proxy_name}:/tmp/${capture_name}" "${capture_dir}/${capture_name}"; then

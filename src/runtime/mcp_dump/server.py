@@ -43,16 +43,13 @@ wave wheat willow wind winter wood wren yellow zephyr""".split()
 def validate_config(value):
     if not isinstance(value, dict) or set(value) != set(DEFAULT_CONFIG):
         raise ValueError("config must contain exactly tool_count, description_words, schema_properties, seed")
-    limits = {"tool_count": (0, 10000), "description_words": (0, 2000),
+    if type(value["tool_count"]) is not int or value["tool_count"] < 0:
+        raise ValueError("tool_count must be a nonnegative integer")
+    limits = {"description_words": (0, 2000),
               "schema_properties": (0, 100), "seed": (0, 2**32 - 1)}
     for key, (lower, upper) in limits.items():
         if type(value[key]) is not int or not lower <= value[key] <= upper:
             raise ValueError(f"{key} must be an integer in {lower}..{upper}")
-    # Bound aggregate generated metadata, independently of pagination.
-    estimate = value["tool_count"] * (
-        500 + value["description_words"] * 10 + value["schema_properties"] * 300)
-    if estimate > 64_000_000:
-        raise ValueError("combined tool metadata exceeds the 64 MB experiment limit")
     return dict(value)
 
 
@@ -166,7 +163,7 @@ class Server:
         offset = 0
         if "cursor" in params:
             cursor = params["cursor"]
-            if not isinstance(cursor, str) or not re.fullmatch(r"[a-f0-9]{16}:[0-9]{1,5}", cursor):
+            if not isinstance(cursor, str) or not re.fullmatch(r"[a-f0-9]{16}:[0-9]+", cursor):
                 raise ProtocolError(-32602, "Invalid cursor")
             revision, number = cursor.split(":")
             offset = int(number)
@@ -181,8 +178,9 @@ class Server:
 
     def call_tool(self, params):
         name = params.get("name")
-        match = re.fullmatch(r"dump_tool_([0-9]{5})", name) if isinstance(name, str) else None
-        if not match or not 1 <= int(match[1]) <= self.state.config["tool_count"]:
+        match = re.fullmatch(r"dump_tool_([0-9]{5,})", name) if isinstance(name, str) else None
+        if (not match or not 1 <= int(match[1]) <= self.state.config["tool_count"]
+                or name != f"dump_tool_{int(match[1]):05d}"):
             raise ProtocolError(-32602, "Unknown tool")
         arguments = params.get("arguments", {})
         allowed = {f"field_{index:03d}" for index in range(1, self.state.config["schema_properties"] + 1)}

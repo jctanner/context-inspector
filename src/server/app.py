@@ -5,36 +5,70 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from .config import Settings
+from .config import Settings, CLAUDE_HOME, CONTAINER_ROOT
 from .terminal import TerminalExit, TerminalManager
 from .flows import FlowEventStream
 from .context import ContextEventStream
 from .context_index import ContextIndex
 from .memory import get_memory
+from .mcp_config import get_count, set_count
+from .skill_count import SkillCount
+from .workspace_files import inspect_workspace
+from .strace_search import search_traces
+from .startup_reset import clear_session_traces
+
+
+class MCPCountRequest(BaseModel):
+    tool_count: int
+    revision: str
+
+    @field_validator("tool_count", mode="before")
+    @classmethod
+    def positive_integer(cls, value):
+        if isinstance(value, str) and value.isascii() and value.isdecimal():
+            value = int(value)
+        if type(value) is not int or value <= 0:
+            raise ValueError("Enter a positive integer")
+        return value
+
+
+class SkillCountRequest(BaseModel):
+    skill_count: int
+    revision: str
+
+    @field_validator("skill_count", mode="before")
+    @classmethod
+    def positive_integer(cls, value):
+        return MCPCountRequest.positive_integer(value)
 
 
 class CreateSessionRequest(BaseModel):
     extra_args: list[str] = Field(default_factory=list, max_length=32)
+    model: Literal["claude-haiku-4-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-opus-4-6"] | None = None
 
 
 class CreateSessionResponse(BaseModel):
     session_id: str
     pid: int
+    selected_model: str | None = None
 
 
 class SessionStatusResponse(BaseModel):
     session_id: str
     pid: int
     alive: bool
+    selected_model: str | None = None
 
 
 def apply_terminal_message(session, message: object) -> str | None:
@@ -63,6 +97,22 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     settings.validate()
     manager = manager or TerminalManager()
     indexes: dict[str, ContextIndex] = {}
+    skills = SkillCount(settings.workspace)
+    trace_search_lock = asyncio.Lock()
+    session_lifecycle_lock = asyncio.Lock()
+
+    def selected_model(session) -> str | None:
+        argv = getattr(session, "argv", ())
+        model = None
+        for index, arg in enumerate(argv):
+            if arg.startswith("--model="):
+                model = arg.split("=", 1)[1]
+            elif arg == "--model" and index + 1 < len(argv):
+                model = argv[index + 1]
+        return model
+
+    def session_model(session_id: str) -> str:
+        return selected_model(manager.get(session_id)) or settings.model
 
     def context_index(session_id: str) -> ContextIndex:
         if manager.get(session_id) is None:
@@ -71,36 +121,123 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
             indexes[session_id] = ContextIndex(ContextEventStream(
                 settings.state_dir / "sessions" / session_id / "events.jsonl", session_id,
                 settings.context_window_tokens, settings.context_window_source,
+                fallback_model=session_model(session_id),
             ))
         return indexes[session_id]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         yield
+        await asyncio.to_thread(skills.close)
         await asyncio.gather(*(index.close() for index in indexes.values()))
         await manager.stop_all()
 
     app = FastAPI(title="Context Inspector", lifespan=lifespan)
     app.state.settings = settings
     app.state.terminals = manager
+    app.state.skills = skills
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/api/workspace")
+    async def workspace_list(response: Response, path: str = Query(default="", max_length=2048),
+                             after: str = Query(default="", max_length=4096),
+                             limit: int = Query(default=100, ge=1, le=200)):
+        response.headers["Cache-Control"] = "no-store"
+        return await asyncio.to_thread(inspect_workspace, settings.workspace, "list", path, after, limit)
+
+    @app.get("/api/strace/search")
+    async def strace_search(response: Response, q: str = Query(min_length=1, max_length=1024)):
+        response.headers["Cache-Control"] = "no-store"
+        if trace_search_lock.locked():
+            raise HTTPException(429, "A trace search is already running; retry shortly",
+                                headers={"Cache-Control": "no-store"})
+        async with trace_search_lock:
+            try:
+                return await asyncio.to_thread(search_traces, CONTAINER_ROOT / "strace", q)
+            except HTTPException as exc:
+                exc.headers = {"Cache-Control": "no-store"}
+                raise
+
+    async def claude_files(response: Response, action: str, path: str, after: str = "", limit: int = 100):
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            return await asyncio.to_thread(inspect_workspace, CLAUDE_HOME / ".claude", action, path, after, limit)
+        except HTTPException as exc:
+            exc.headers = {"Cache-Control": "no-store"}
+            raise
+
+    @app.get("/api/claude-files")
+    async def claude_files_list(response: Response, path: str = Query(default="", max_length=2048),
+                                after: str = Query(default="", max_length=4096), limit: int = Query(default=100, ge=1, le=200)):
+        return await claude_files(response, "list", path, after, limit)
+
+    @app.get("/api/claude-files/file")
+    async def claude_files_read(response: Response, path: str = Query(max_length=2048)):
+        return await claude_files(response, "read", path)
+
+    @app.get("/api/workspace/file")
+    async def workspace_file(response: Response, path: str = Query(max_length=2048)):
+        response.headers["Cache-Control"] = "no-store"
+        return await asyncio.to_thread(inspect_workspace, settings.workspace, "read", path)
+
+    @app.get("/api/skill-dump/count")
+    async def skill_count(response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        return await asyncio.to_thread(skills.snapshot)
+
+    @app.put("/api/skill-dump/count", status_code=202)
+    async def update_skill_count(request: SkillCountRequest, response: Response,
+                                  x_context_inspector: str | None = Header(default=None)):
+        if x_context_inspector != "1":
+            raise HTTPException(403, "Same-origin application request required")
+        response.headers["Cache-Control"] = "no-store"
+        return await asyncio.to_thread(skills.start, request.skill_count, request.revision)
+
+    @app.get("/api/mcp-dump/count")
+    async def mcp_count(response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        return await asyncio.to_thread(get_count, settings.workspace)
+
+    @app.put("/api/mcp-dump/count")
+    async def update_mcp_count(request: MCPCountRequest, response: Response,
+                               x_context_inspector: str | None = Header(default=None)):
+        # Custom header prevents cross-origin HTML forms from mutating files.
+        # No permissive CORS policy is installed on this application.
+        if x_context_inspector != "1":
+            raise HTTPException(403, "Same-origin application request required")
+        response.headers["Cache-Control"] = "no-store"
+        return await asyncio.to_thread(set_count, settings.workspace, request.tool_count, request.revision)
+
     @app.post("/api/sessions", response_model=CreateSessionResponse)
     async def create_session(request: CreateSessionRequest) -> CreateSessionResponse:
-        # No await between checking and creating: concurrent requests handled
-        # by this server's event loop cannot spawn duplicate shared sessions.
+        async with session_lifecycle_lock:
+            return await start_session(request)
+
+    async def start_session(request: CreateSessionRequest) -> CreateSessionResponse:
         active = manager.active()
         if active is not None:
-            return CreateSessionResponse(session_id=active.id, pid=active.pid)
+            return CreateSessionResponse(session_id=active.id, pid=active.pid, selected_model=selected_model(active))
         if any("\x00" in argument for argument in request.extra_args):
             raise HTTPException(status_code=400, detail="Arguments may not contain NUL bytes")
         try:
-            argv = settings.claude_command(tuple(request.extra_args))
+            argv = settings.claude_command(tuple(request.extra_args), model=request.model)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if settings.command_override is None:
+            # Keep ownership until the destructive worker finishes, even if the
+            # request is cancelled. A later Start must never race that worker.
+            cleanup = asyncio.create_task(asyncio.to_thread(clear_session_traces))
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await cleanup
+                raise
+            except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                raise HTTPException(409, "Cannot clear previous traces safely. Stop any previous Claude "
+                                    "container and check trace-folder permissions/mounts, then retry Start.") from exc
         session_id = f"session-{uuid.uuid4().hex}"
         sessions_dir = settings.state_dir / "sessions"
         sessions_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -113,17 +250,21 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         environment["CONTEXT_INSPECTOR_EVENT_FILE"] = str(event_file)
         environment["CONTEXT_INSPECTOR_STATE_DIR"] = str(settings.state_dir)
         session = manager.create(argv, cwd=settings.workspace, env=environment, session_id=session_id)
-        return CreateSessionResponse(session_id=session.id, pid=session.pid)
+        return CreateSessionResponse(session_id=session.id, pid=session.pid, selected_model=selected_model(session))
 
     @app.get("/api/sessions/active", response_model=SessionStatusResponse | None)
     async def active_session() -> SessionStatusResponse | None:
         session = manager.active()
         if session is None:
             return None
-        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=True)
+        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=True, selected_model=selected_model(session))
 
     @app.delete("/api/sessions/{session_id}")
     async def stop_session(session_id: str) -> dict[str, bool]:
+        async with session_lifecycle_lock:
+            return await stop_session_locked(session_id)
+
+    async def stop_session_locked(session_id: str) -> dict[str, bool]:
         index = indexes.pop(session_id, None)
         if index is not None:
             await index.close()
@@ -137,7 +278,7 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         session = manager.get(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=session.alive)
+        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=session.alive, selected_model=selected_model(session))
 
     @app.websocket("/api/sessions/{session_id}/terminal")
     async def terminal_socket(websocket: WebSocket, session_id: str) -> None:
@@ -258,6 +399,7 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         stream = ContextEventStream(
             settings.state_dir / "sessions" / session_id / "events.jsonl", session_id,
             settings.context_window_tokens, settings.context_window_source,
+            fallback_model=session_model(session_id),
         )
         try:
             async for event in stream.events(after_sequence):

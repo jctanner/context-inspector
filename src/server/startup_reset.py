@@ -56,11 +56,11 @@ def _open_child(stack: ExitStack, parent: int, name: str) -> int:
     return descriptor
 
 
-def _remove_entries(home_fd: int) -> list[str]:
+def _remove_entries(home_fd: int, names=RESET_ENTRIES, label="Claude") -> list[str]:
     if not shutil.rmtree.avoids_symlink_attacks:
         raise RuntimeError("Claude startup reset requires symlink-resistant rmtree")
     removed = []
-    for name in RESET_ENTRIES:
+    for name in names:
         try:
             entry = os.stat(name, dir_fd=home_fd, follow_symlinks=False)
         except FileNotFoundError:
@@ -71,20 +71,34 @@ def _remove_entries(home_fd: int) -> list[str]:
             # Unlink symlinks themselves; never traverse their targets.
             os.unlink(name, dir_fd=home_fd)
         removed.append(name)
-        print(f"Claude startup reset: removed {name} (permanent; no backup)", flush=True)
+        print(f"{label} startup reset: removed {name} (permanent; no backup)", flush=True)
     return removed
 
 
-def _assert_no_mounted_targets(home: Path) -> None:
+def _assert_no_mounted_targets(home: Path, *, entire_root: bool = False) -> None:
     # rmtree does not follow symlinks, but would traverse an actual bind mount.
     # Refuse these before deleting any entry. Linux/Podman is the supported runtime.
-    targets = [home / name for name in RESET_ENTRIES]
+    targets = [home] if entire_root else [home / name for name in RESET_ENTRIES]
     protected_roots = {home, *(p for p in home.parents if PROJECT_ROOT in p.parents)}
     for line in Path("/proc/self/mountinfo").read_text().splitlines():
         encoded = line.split()[4]
         mount = Path(re.sub(r"\\([0-7]{3})", lambda m: chr(int(m[1], 8)), encoded))
         if mount in protected_roots or any(mount == target or target in mount.parents for target in targets):
             raise RuntimeError("Refusing Claude startup reset: a cleanup entry contains a mounted filesystem")
+
+
+def clear_session_traces() -> None:
+    """Clear only traces; caller owns the stack lifetime and session lifecycle locks."""
+    with ExitStack() as stack:
+        project_fd = os.open(PROJECT_ROOT, DIRECTORY_FLAGS)
+        stack.callback(os.close, project_fd)
+        container_fd = _open_child(stack, project_fd, "container")
+        trace_fd = _open_child(stack, container_fd, "strace")
+        root = PROJECT_ROOT / "container" / "strace"
+        assert_home_unused(root)
+        _assert_no_mounted_targets(root, entire_root=True)
+        os.fchmod(trace_fd, 0o700)
+        _remove_entries(trace_fd, os.listdir(trace_fd), "Strace")
 
 
 @contextmanager
@@ -110,8 +124,15 @@ def clean_claude_startup(*, enabled: bool = True):
         evaluator_fd = _open_child(stack, home_parent_fd, "evaluator")
         home_fd = _open_child(stack, evaluator_fd, ".claude")
         home = PROJECT_ROOT / "container" / "home" / "evaluator" / ".claude"
+        trace_fd = _open_child(stack, container_fd, "strace")
+        trace_root = PROJECT_ROOT / "container" / "strace"
         assert_home_unused(home)
+        assert_home_unused(trace_root)
         _assert_no_mounted_targets(home)
+        _assert_no_mounted_targets(trace_root, entire_root=True)
+        # Validate both roots before deleting either. The same lifetime lock owns both.
+        os.fchmod(trace_fd, 0o700)
+        _remove_entries(trace_fd, os.listdir(trace_fd), "Strace")
         removed = _remove_entries(home_fd)
         if not removed:
             print("Claude startup reset: no prior session data or memories to remove", flush=True)

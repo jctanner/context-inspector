@@ -53,5 +53,13 @@ fi
 
 # Preserve the image PATH and provider/proxy environment, but restore the agent
 # account's home after Podman started the bootstrap as root. Never run Claude as root.
+if [[ ${1##*/} == claude && ${CONTEXT_INSPECTOR_STRACE_ENABLED:-0} == 1 ]]; then
+    if ! command -v strace >/dev/null || [[ ! -d /strace ]]; then
+        echo "ERROR: Claude strace requires the tracing image and /strace mount" >&2
+        exit 1
+    fi
+    umask 077
+    set -- strace -ffttv -A -o /strace/pid "$@"
+fi
 exec setpriv --reuid=1000 --regid=1000 --clear-groups --no-new-privs \
     env "HOME=${agent_home}" "USER=${agent_user}" "LOGNAME=${agent_user}" "$@"
