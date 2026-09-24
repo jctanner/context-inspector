@@ -185,8 +185,7 @@ if [[ ${auth_mode} == vertex ]]; then
         mounts+=(--volume "${adc_copy}:/tmp/adc.json:ro,Z" --env GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json)
     fi
 else
-    agent_env+=(--env CONTEXT_INSPECTOR_STRACE_ENABLED=0
-                --env MLFLOW_CLAUDE_TRACING_ENABLED=false)
+    agent_env+=(--env MLFLOW_CLAUDE_TRACING_ENABLED=false)
     if [[ ${harness} == codex ]]; then
         agent_env+=(--env CODEX_HOME=/home/evaluator/.codex
                     --env CODEX_CA_CERTIFICATE=/mitmproxy-ca-cert.pem
@@ -230,13 +229,12 @@ shift
 tracing_args=()
 mcp_dump_args=()
 strace_options=()
+source "${runtime_dir}/mlflow-env.sh"
+configure_codex_tracing
 if [[ ${auth_mode} == vertex ]]; then
-    source "${runtime_dir}/mlflow-env.sh"
     configure_claude_tracing
     source "${runtime_dir}/mcp-dump-env.sh"
     configure_mcp_dump
-    source "${runtime_dir}/strace-env.sh"
-    configure_strace
 else
     agent_command="/usr/local/bin/${harness}"
     # A file bind cannot follow host logout/login or atomic replacement. Stop
@@ -258,6 +256,8 @@ else
     ) &
     auth_watch_pid=$!
 fi
+source "${runtime_dir}/strace-env.sh"
+configure_strace
 set -- "${tracing_args[@]}" "${mcp_dump_args[@]}" "$@"
 agent_exit=0
 podman run --rm -it --name "${agent_name}" --network "${network_name}" --userns=keep-id:uid=1000,gid=1000 --user 0 --workdir /workspace \

@@ -87,7 +87,7 @@ class ProfileRouteTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(created.harness, harness)
                     self.assertEqual(created.auth_mode, "oauth")
                     self.assertEqual(created.selected_model, model)
-                    self.assertNotIn("strace", created.capabilities)
+                    self.assertIn("strace", created.capabilities)
                     argv = manager.create.call_args.args[0]
                     self.assertEqual(argv[2], harness)
                     self.assertIn("--no-daemon" if harness == "codex" else "--setting-sources", argv)

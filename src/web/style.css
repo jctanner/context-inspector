@@ -287,3 +287,88 @@ summary:focus-visible, button:focus-visible { outline: 2px solid #2458c6; outlin
 #strace-results li { margin: 1rem 0; border: 1px solid #ccd5e2; background: white; border-radius: .4rem; overflow: hidden; }
 .strace-location { padding: .5rem .75rem; background: #eaf0f7; font-family: monospace; overflow-wrap: anywhere; }
 #strace-results pre { margin: 0; padding: .75rem; overflow: auto; white-space: pre; max-height: 20rem; }
+
+/* Stack-owned MLflow trace browser */
+#mlflow-section { padding: 1.25rem; min-width: 0; overflow: auto; }
+#mlflow-filter { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; padding: .8rem 1rem; background: #fff; border: 1px solid #dce2eb; border-radius: 8px; font-size: .8rem; }
+#mlflow-session { min-width: 0; width: 22rem; max-width: 100%; border: 1px solid #cbd4e1; border-radius: 5px; padding: .5rem .7rem; }
+#mlflow-status { font-size: .75rem; color: #68768a; }
+.mlflow-layout { display: grid; grid-template-columns: minmax(210px, 23%) minmax(0, 1fr); gap: 1rem; align-items: start; }
+#mlflow-list, .mlflow-spans ol { list-style: none; padding: 0; margin: 0; }
+#mlflow-list { max-height: 76vh; overflow: auto; padding: 2px; }
+#mlflow-list li { margin-bottom: .55rem; }
+#mlflow-section button { font-family: inherit; }
+#mlflow-section .mlflow-trace { display: flex; flex-direction: column; text-align: left; width: 100%; gap: .65rem; padding: .85rem; border: 1px solid #dce2eb; border-radius: 7px; color: #24344b; background: white; font-size: .8rem; font-weight: 400; box-shadow: 0 1px 2px #18324b05; overflow-wrap: anywhere; }
+#mlflow-section .mlflow-trace:hover { border-color: #a3b6d5; background: #f9fbff; }
+#mlflow-section .mlflow-trace[aria-pressed="true"] { border-color: #7aa3e1; background: #eff5ff; box-shadow: inset 3px 0 #3975ce; }
+.mlflow-trace-meta { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.mlflow-trace time, .mlflow-trace small { color: #65748a; font-size: .68rem; }
+#mlflow-detail { min-width: 0; overflow-wrap: anywhere; border: 1px solid #d9e1ec; border-radius: 10px; background: #fff; overflow: hidden; box-shadow: 0 3px 12px #1b345208; }
+#mlflow-detail:empty { display: none; }
+#mlflow-detail > p { padding: 0 1.25rem; }
+.mlflow-detail-header { padding: 1.1rem 1.25rem .8rem; display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.mlflow-detail-header small { color: #79879a; font-size: .6rem; font-weight: 700; letter-spacing: .12em; }
+.mlflow-detail-header h3 { margin: .3rem 0 0; font-size: 1.15rem; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.mlflow-detail-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+#mlflow-section .mlflow-detail-actions button { background: #fff; color: #40516a; border: 1px solid #d6deea; padding: .4rem .65rem; font-size: .7rem; border-radius: 5px; }
+.mlflow-metrics { display: flex; flex-wrap: wrap; gap: 1.3rem; align-items: center; padding: .65rem 1.25rem; }
+.mlflow-metric { display: grid; gap: .25rem; }
+.mlflow-metric > span { font-size: .65rem; color: #758297; }
+.mlflow-metric strong { font-size: .85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+#mlflow-detail .mlflow-identifiers { font: .67rem/1.5 ui-monospace, monospace; color: #7b889b; margin: .5rem 0 1rem; }
+.mlflow-badge { display: inline-block; flex-shrink: 0; border-radius: 4px; padding: .2rem .38rem; font: 650 .59rem/1.3 ui-sans-serif, sans-serif; letter-spacing: .025em; color: #55667e; background: #edf1f6; }
+.mlflow-badge[data-kind="ok"] { color: #23734f; background: #e5f5ec; }
+.mlflow-badge[data-kind="error"] { color: #af3f43; background: #ffeaeb; }
+.mlflow-badge[data-kind="llm"] { color: #7250aa; background: #f1eafe; }
+.mlflow-badge[data-kind="tool"] { color: #1a7781; background: #e2f4f5; }
+.mlflow-badge[data-kind="agent"] { color: #366ab3; background: #e7f0ff; }
+.mlflow-spans { display: grid; grid-template-columns: minmax(230px, 38%) minmax(0, 1fr); min-height: 400px; border-top: 1px solid #e0e6ef; border-bottom: 1px solid #e0e6ef; }
+.mlflow-span-nav { min-width: 0; background: #fafbfd; border-right: 1px solid #e0e6ef; padding-bottom: .5rem; }
+.mlflow-pane-heading { display: flex; justify-content: space-between; align-items: center; padding: .9rem; font-size: .75rem; }
+.mlflow-pane-heading > span { color: #8490a2; font-size: .65rem; }
+.mlflow-span-search { display: block; width: calc(100% - 1.5rem); margin: 0 .75rem .7rem; box-sizing: border-box; padding: .45rem .6rem; font-family: inherit; font-size: .72rem; color: #34465e; background: white; border: 1px solid #dce3ed; border-radius: 5px; }
+.mlflow-spans ol { overflow: auto; max-height: 65vh; }
+#mlflow-section .mlflow-span-row { width: 100%; text-align: left; padding: .7rem .8rem; border: 0; border-radius: 0; background: transparent; color: #34465e; font-weight: 400; box-shadow: none; }
+#mlflow-section .mlflow-span-row:hover { background: #eef3fa; }
+#mlflow-section .mlflow-span-row[aria-pressed="true"] { background: #eaf2ff; box-shadow: inset 3px 0 #4280d5; }
+.mlflow-span-label { display: flex; align-items: center; gap: .4rem; box-sizing: border-box; }
+.mlflow-span-name { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .72rem; }
+.mlflow-span-label small { color: #7c8799; font-size: .62rem; white-space: nowrap; }
+.mlflow-timing-track { height: 4px; background: #e9edf4; position: relative; margin: .55rem 0 0; border-radius: 3px; overflow: hidden; }
+.mlflow-timing-track > span { position: absolute; top: 0; bottom: 0; min-width: 2px; border-radius: 3px; background: #7ea4dc; }
+.mlflow-timing-track > span[data-kind="llm"] { background: #ac92d7; }
+.mlflow-timing-track > span[data-kind="tool"] { background: #73b7bf; }
+.mlflow-span-detail { min-width: 0; }
+.mlflow-selected-heading { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; padding: 1rem; }
+.mlflow-selected-heading h4 { margin: 0; flex: 1; font-size: .9rem; font-weight: 600; }
+.mlflow-selected-heading > span:last-child { color: #738096; font-size: .7rem; }
+.mlflow-detail-tabs { display: flex; gap: 1rem; padding: 0 1rem; border-bottom: 1px solid #e0e6ef; }
+#mlflow-section .mlflow-detail-tabs button { background: transparent; color: #718097; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: .65rem 0; font-size: .75rem; font-weight: 500; }
+#mlflow-section .mlflow-detail-tabs button[aria-selected="true"] { color: #235fb4; border-bottom-color: #397ace; }
+.mlflow-span-content { padding: 1rem; max-height: 65vh; overflow: auto; }
+.mlflow-io-card { margin-bottom: 1rem; border: 1px solid #dfe5ee; border-radius: 6px; overflow: hidden; }
+.mlflow-io-card h5 { margin: 0; padding: .6rem .75rem; background: #f8fafd; border-bottom: 1px solid #e5eaf2; font-size: .7rem; font-weight: 600; color: #55667c; }
+#mlflow-detail pre { margin: 0; padding: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 26rem; overflow: auto; font: .73rem/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; color: #32455f; }
+#mlflow-detail details { margin: .5rem 0; font-size: .75rem; }
+#mlflow-detail details summary { padding: .4rem 0; color: #65768e; }
+.mlflow-trace-footer { padding: .8rem 1.25rem; background: #fcfdff; }
+.mlflow-provenance { font-size: .66rem; color: #8290a4; margin: 0 0 .65rem; }
+@media (max-width: 1100px) { .mlflow-layout { grid-template-columns: minmax(180px, 22%) minmax(0, 1fr); } .mlflow-spans { grid-template-columns: minmax(190px, 38%) minmax(0, 1fr); } }
+@media (max-width: 800px) {
+  #mlflow-section { padding: .65rem; }
+  .mlflow-layout, .mlflow-spans { grid-template-columns: minmax(0, 1fr); }
+  #mlflow-list { max-height: 18rem; }
+  .mlflow-spans ol { max-height: 17rem; }
+  .mlflow-span-nav { border-right: 0; border-bottom: 1px solid #e0e6ef; }
+  .mlflow-detail-header { align-items: start; }
+}
+
+.context-history { flex: 0 0 auto; padding: 0.65rem 1rem 0.35rem; background: #fbfcfe; border-bottom: 1px solid #d9dee7; }
+.context-history strong { font-size: 0.8rem; }
+.context-history svg { display: block; width: 100%; height: 132px; }
+.context-history svg text { fill: #65748b; font: 11px system-ui, sans-serif; }
+.context-history p { margin: 0.25rem 0; font-size: 0.72rem; color: #536078; overflow-wrap: anywhere; }
+.context-chart-grid { stroke: #e1e7f0; stroke-width: 1; }
+.context-chart-line { fill: none; stroke: #2458c6; stroke-width: 2; stroke-linejoin: round; }
+.context-chart-point { fill: #2458c6; stroke: #fbfcfe; stroke-width: 1.5; }
+.context-chart-point:focus, .context-chart-point:hover { fill: #0b987d; stroke: #0b987d; outline: none; }

@@ -28,7 +28,7 @@ requests and responses captured by the mitmproxy sidecar.
 
 ## Active tasks
 
-None for Phase 04.
+None.
 
 ## Awaiting deployment
 
@@ -40,6 +40,38 @@ None for Phase 04.
   bundle is rebuilt and falls back to legacy replay until then.
 
 ## Deployment note
+
+Task 095 adds a context percentage line graph above the meter using captured
+response timestamps for both providers. Loaded history, live updates, unknown gaps
+and clear/reset supported. 32 context tests, browser fixture and build passed.
+Normal backend restart/browser refresh needed; running stack untouched.
+See [task 095](docs/tasks/done/095-context-usage-graph.md).
+
+Task 094 refines MLflow trace presentation: compact metrics, searchable span
+timeline, semantic badges and input/output/attributes/JSON panels. Production
+build, browser regression and desktop/mobile visual inspection passed. Browser
+refresh loads the rebuilt frontend; no stack restart performed. See
+[task 094](docs/tasks/done/094-mlflow-trace-presentation.md).
+
+Task 093 adds the integrated MLflow tab backed by stack-owned REST reads: all
+current-stack traces, native session filter, paging, span details and raw JSON.
+No separate MLflow URL/port needed. 246 tests run, eight skipped, others pass;
+real isolated MLflow REST, browser fixtures and production build pass. Backend
+restart/browser refresh required; main stack untouched. See
+[task 093](docs/tasks/done/093-integrated-mlflow-tab.md).
+
+Task 092 enables Codex/OAuth MLflow tracing through native notify and exact-turn
+transcript snapshots. Captured thread/turn IDs, tool spans, conservative usage,
+private errors and bounded shutdown draining are implemented. 238 tests run,
+seven skipped, remaining pass; isolated real Codex interactive/exec/resume and
+Claude tracing tests both pass against fixture models and real MLflow. No host
+config/auth changes or stack restart. Restart normally/new Codex session to activate.
+See [task 092](docs/tasks/done/092-codex-mlflow-integration.md) and
+[ADR-0044](docs/decisions/ADR-0044-codex-mlflow-notify.md).
+
+Task 089 enables syscall tracing and /strace search for Claude/OAuth and
+Codex/OAuth, per user instruction. Regression, browser, build and isolated tracing
+checks pass. Restart backend/new session/refresh required; active session untouched.
 
 Task 088 fixes Codex model discovery to prefer the inspector cache over the host
 cache. Host refresh had removed GPT-6 Sol/Luna while inspector still listed them.
@@ -206,6 +238,12 @@ The current Claude session has been preserved.
 
 ## Decisions
 
+- [ADR-0045 — Integrated MLflow browser](docs/decisions/ADR-0045-integrated-mlflow-browser.md)
+
+- [ADR-0044 — Codex MLflow notify tracing](docs/decisions/ADR-0044-codex-mlflow-notify.md)
+
+- [ADR-0043 — OAuth syscall tracing](docs/decisions/ADR-0043-oauth-syscall-tracing.md)
+
 - [ADR-0042 — Inspector model catalog](docs/decisions/ADR-0042-inspector-model-catalog.md)
 
 - [ADR-0041 — Container-installed harnesses](docs/decisions/ADR-0041-container-installed-harnesses.md)
@@ -286,6 +324,13 @@ The current Claude session has been preserved.
 
 ## Implementation notes
 
+- [Codex MLflow hooks](docs/notes/codex-mlflow-hooks.md) — existing @mlflow/codex
+  package provides turn-level export via notify and transcripts; implemented and
+  validated in task 092, with published-package compatibility fixes.
+
+- [MLflow Codex trace grouping](docs/notes/mlflow-codex-trace-grouping.md) —
+  request traces, optional traceparent links and session metadata; source reviewed.
+
 - [Codex context-limit evidence](docs/notes/codex-context-limits.md) — active
   gpt-6-luna sessions report 258,400 effective tokens; catalog maximum is separate.
   Catalog-derived meter integration is complete in task 085.
@@ -299,6 +344,18 @@ The current Claude session has been preserved.
 - [Request-stream identity investigation](docs/notes/request-stream-identity-investigation.md)
 
 ## Completed setup
+
+- [MLflow trace presentation](docs/tasks/done/094-mlflow-trace-presentation.md).
+
+- [Integrated MLflow tab](docs/tasks/done/093-integrated-mlflow-tab.md).
+
+- [Codex MLflow integration](docs/tasks/done/092-codex-mlflow-integration.md).
+
+- [Codex hook/plugin investigation](docs/tasks/done/091-codex-mlflow-hooks.md).
+
+- [MLflow Codex grouping investigation](docs/tasks/done/090-mlflow-codex-trace-grouping.md).
+
+- [OAuth strace and search](docs/tasks/done/089-oauth-strace.md).
 
 - [Codex model picker source](docs/tasks/done/088-investigate-codex-model-picker.md).
 

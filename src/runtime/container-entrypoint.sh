@@ -90,9 +90,10 @@ elif [[ ${1##*/} == codex ]]; then
     unset native_login_status
 fi
 
-if [[ ${1##*/} == claude && ${MLFLOW_CLAUDE_TRACING_ENABLED:-false} == true ]]; then
+if [[ ( ${1##*/} == claude && ${MLFLOW_CLAUDE_TRACING_ENABLED:-false} == true ) ||
+      ( ${1##*/} == codex && ${CONTEXT_INSPECTOR_CODEX_TRACING_ENABLED:-0} == 1 ) ]]; then
     if ! command -v node >/dev/null || ! command -v timeout >/dev/null; then
-        echo "ERROR: Claude tracing requires the stack's Node-enabled agent image" >&2
+        echo "ERROR: Harness tracing requires the stack's Node-enabled agent image" >&2
         exit 1
     fi
     if ! curl --fail --silent --show-error --output /dev/null --connect-timeout 3 --max-time 5 \
@@ -102,11 +103,18 @@ if [[ ${1##*/} == claude && ${MLFLOW_CLAUDE_TRACING_ENABLED:-false} == true ]]; 
     fi
 fi
 
+# Supervise Codex inside its own account so native notify exports can drain.
+# Keep the strace prefix around the whole supervisor/CLI descendant tree.
+traced_harness=${1##*/}
+if [[ ${traced_harness} == codex && ${CONTEXT_INSPECTOR_CODEX_TRACING_ENABLED:-0} == 1 ]]; then
+    set -- python3 /opt/context-inspector/codex-mlflow/codex-tracing.py run "$@"
+fi
+
 # Preserve the image PATH and provider/proxy environment, but restore the agent
 # account's home after Podman started the bootstrap as root. Never run Claude as root.
-if [[ ${1##*/} == claude && ${CONTEXT_INSPECTOR_STRACE_ENABLED:-0} == 1 ]]; then
+if [[ ( ${traced_harness} == claude || ${traced_harness} == codex ) && ${CONTEXT_INSPECTOR_STRACE_ENABLED:-0} == 1 ]]; then
     if ! command -v strace >/dev/null || [[ ! -d /strace ]]; then
-        echo "ERROR: Claude strace requires the tracing image and /strace mount" >&2
+        echo "ERROR: Harness strace requires the tracing image and /strace mount" >&2
         exit 1
     fi
     umask 077

@@ -27,6 +27,7 @@ from .context_index import ContextIndex
 from .memory import get_memory
 from .mcp_config import get_count, set_count
 from .skill_count import SkillCount
+from .mlflow_traces import MLflowTraces
 from .workspace_files import inspect_workspace
 from .strace_search import search_traces
 from .startup_reset import clear_session_traces
@@ -119,6 +120,8 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     indexes: dict[str, ContextIndex] = {}
     launches: dict[str, dict] = {}
     skills = SkillCount(settings.workspace)
+    mlflow_traces = MLflowTraces()
+    mlflow_lock = asyncio.Semaphore(4)
     trace_search_lock = asyncio.Lock()
     session_lifecycle_lock = asyncio.Lock()
 
@@ -170,6 +173,31 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/mlflow/status")
+    async def mlflow_status(response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        return mlflow_traces.status()
+
+    async def mlflow_read(response, function, *args):
+        response.headers["Cache-Control"] = "no-store"
+        if mlflow_lock.locked():
+            raise HTTPException(429, "MLflow viewer is busy; retry shortly.", headers={"Cache-Control": "no-store"})
+        async with mlflow_lock:
+            try:
+                return await asyncio.to_thread(function, *args)
+            except HTTPException as exc:
+                exc.headers = {"Cache-Control": "no-store"}
+                raise
+
+    @app.get("/api/mlflow/traces")
+    async def mlflow_search(response: Response, session_id: str = Query(default="", max_length=200),
+                            page_token: str = Query(default="", max_length=4096)):
+        return await mlflow_read(response, mlflow_traces.search, session_id, page_token)
+
+    @app.get("/api/mlflow/traces/{trace_id}")
+    async def mlflow_detail(response: Response, trace_id: str):
+        return await mlflow_read(response, mlflow_traces.detail, trace_id)
 
     @app.get("/api/workspace")
     async def workspace_list(response: Response, path: str = Query(default="", max_length=2048),

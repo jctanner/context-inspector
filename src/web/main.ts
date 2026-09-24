@@ -1,6 +1,8 @@
+import { renderContextHistory } from "./context-history";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WorkspaceView } from "./workspace";
+import { MLflowView } from "./mlflow";
 import { setupStrace } from "./strace";
 import { StartDialog, type LaunchSelection } from "./start-dialog";
 import { setupMcpCount } from "./mcp-count";
@@ -89,7 +91,19 @@ const filesSection = document.querySelector<HTMLElement>("#workspace-section")!;
 const navWorkspace = document.querySelector<HTMLButtonElement>("#nav-workspace")!;
 const traceSection = document.querySelector<HTMLElement>("#strace-section")!;
 const navStrace = document.querySelector<HTMLButtonElement>("#nav-strace")!;
+const mlflowView = new MLflowView();
+const mlflowSection = document.querySelector<HTMLElement>("#mlflow-section")!;
+const navMlflow = document.querySelector<HTMLButtonElement>("#nav-mlflow")!;
+function hideMlflow(): void {
+  mlflowSection.hidden = true; navMlflow.removeAttribute("aria-current"); mlflowView.hide();
+}
+navMlflow.onclick = () => {
+  for (const section of [sessionSection, memorySection, filesSection, traceSection]) section.hidden = true;
+  for (const nav of [navSession, navMemory, navWorkspace, navStrace]) nav.removeAttribute("aria-current");
+  mlflowSection.hidden = false; navMlflow.setAttribute("aria-current", "page"); mlflowView.show();
+};
 navSession.onclick = () => {
+  hideMlflow();
   traceSection.hidden = true; navStrace.removeAttribute("aria-current");
   filesSection.hidden = true; navWorkspace.removeAttribute("aria-current");
   sessionSection.hidden = false; memorySection.hidden = true;
@@ -97,6 +111,7 @@ navSession.onclick = () => {
   requestTabs.resume();
 };
 navMemory.onclick = () => {
+  hideMlflow();
   traceSection.hidden = true; navStrace.removeAttribute("aria-current");
   filesSection.hidden = true; navWorkspace.removeAttribute("aria-current");
   sessionSection.hidden = true; memorySection.hidden = false;
@@ -104,12 +119,14 @@ navMemory.onclick = () => {
   memoryView.show();
 };
 navWorkspace.onclick = () => {
+  hideMlflow();
   traceSection.hidden = true; navStrace.removeAttribute("aria-current");
   sessionSection.hidden = true; memorySection.hidden = true; filesSection.hidden = false;
   navSession.removeAttribute("aria-current"); navMemory.removeAttribute("aria-current");
   navWorkspace.setAttribute("aria-current", "page"); workspaceView.show();
 };
 navStrace.onclick = () => {
+  hideMlflow();
   sessionSection.hidden = true; memorySection.hidden = true; filesSection.hidden = true;
   for (const nav of [navSession, navMemory, navWorkspace]) nav.removeAttribute("aria-current");
   traceSection.hidden = false; navStrace.setAttribute("aria-current", "page");
@@ -117,7 +134,7 @@ navStrace.onclick = () => {
 };
 function applyLaunchCapabilities(launch: typeof selectedLaunch): void {
   const legacy = ["claude_files", "strace", "mcp_dump", "skill_dump"];
-  const fallback = launch.harness === "codex" ? [] : launch.auth_mode === "oauth" ? ["claude_files"] : legacy;
+  const fallback = launch.harness === "codex" ? ["strace"] : launch.auth_mode === "oauth" ? ["claude_files", "strace"] : legacy;
   const capabilities = new Set(launch.capabilities ?? fallback);
   for (const [element, capability] of [
     [navMemory, "claude_files"], [navStrace, "strace"],
@@ -209,6 +226,7 @@ type ContextDiff = {
 };
 
 type ContextUsage = {
+  occurred_at?: string | null;
   provider?: string;
   kind: "context.usage";
   flow_id: string;
@@ -289,6 +307,7 @@ function resetContextView(): void {
   responseRows.clear();
   websocketRows.clear();
   usageByFlow.clear();
+  drawContextHistory();
   responseChoices.clear();
   internalFlows.clear();
   requestRows.clear();
@@ -377,6 +396,7 @@ function renderCompactBatch(events: Array<ContextDiff | ContextResponse | Contex
     const sorted = [...flowEventsElement.children].sort((a, b) => Number((b as HTMLElement).dataset.order) - Number((a as HTMLElement).dataset.order));
     flowEventsElement.append(...sorted);
   } finally { batchRendering = false; }
+  drawContextHistory();
   if (mode === "older") {
     lastRequest = previousLastRequest;
     meterStatus.textContent = previousMeterStatus;
@@ -678,6 +698,7 @@ function renderContextResponse(response: ContextResponse): void {
     item.classList.add("purpose-internal");
     item.dataset.purpose = response.purpose.classification;
     internalFlows.add(response.flow_id);
+    if (!batchRendering) drawContextHistory();
     if (displayedUsageFlowId === response.flow_id) {
       const replacement = [...usageByFlow.values()]
         .filter((usage) => !internalFlows.has(usage.flow_id))
@@ -704,8 +725,13 @@ function showContextUsage(usage: ContextUsage): void {
   contextMeterDetail.textContent = `Latest measured request not classified as internal · flow ${usage.flow_id}. ${components} Usage: ${usage.usage_source}; limit: ${usage.context_window_source}.`;
 }
 
+function drawContextHistory(): void {
+  renderContextHistory([...usageByFlow.values()].filter(usage => !internalFlows.has(usage.flow_id)));
+}
+
 function renderContextUsage(usage: ContextUsage): void {
   usageByFlow.set(usage.flow_id, usage);
+  if (!batchRendering) drawContextHistory();
   if (internalFlows.has(usage.flow_id)) return;
   const displayed = displayedUsageFlowId === null ? undefined : usageByFlow.get(displayedUsageFlowId);
   if (!displayed || internalFlows.has(displayed.flow_id) || usage.sequence >= displayed.sequence) {
@@ -898,6 +924,8 @@ function connectFlowSocket(id: string, scheme: string, recovering = false): void
 
 function clearContextHistory(): void {
   if (sessionId === null) return;
+  usageByFlow.clear();
+  drawContextHistory();
   responseChoices.clear();
   resetReadingState();
   localStorage.setItem(`${CONTEXT_CURSOR_PREFIX}${sessionId}`, String(latestContextSequence));

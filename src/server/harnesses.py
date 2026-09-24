@@ -21,9 +21,9 @@ PROFILES = (
     Profile("claude", "vertex", "Claude · Vertex", True, None, SESSION_MODELS,
             "anthropic-http-v1", ("context", "usage", "claude_files", "mcp_dump", "skill_dump", "mlflow", "strace")),
     Profile("claude", "oauth", "Claude · OAuth", True, None,
-            ("claude-haiku-4-5", "claude-sonnet-5"), "anthropic-http-v1", ("context", "usage", "claude_files")),
+            ("claude-haiku-4-5", "claude-sonnet-5"), "anthropic-http-v1", ("context", "usage", "claude_files", "strace")),
     Profile("codex", "oauth", "Codex · ChatGPT OAuth", True, None,
-            (), "codex-responses-v1.1", ("context", "usage")),
+            (), "codex-responses-v1.1", ("context", "usage", "strace", "mlflow")),
 )
 
 

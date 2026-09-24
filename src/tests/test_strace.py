@@ -19,11 +19,11 @@ source "$runtime_dir/strace-env.sh"
 configure_strace
 printf '%s\\0' "${mounts[@]}" "${strace_options[@]}" "$agent_image"
 '''
-        for enabled, command in [("1", "claude"), ("0", "claude"), ("1", "bash")]:
+        for enabled, command in [("1", "claude"), ("0", "claude"), ("1", "codex"), ("0", "codex"), ("1", "/usr/local/bin/codex"), ("1", "bash")]:
             with self.subTest(enabled=enabled, command=command), tempfile.TemporaryDirectory() as directory:
                 result = subprocess.run(["bash", "-euc", script, "test", str(RUNTIME), directory, command],
                     env={**os.environ, "CONTEXT_INSPECTOR_STRACE_ENABLED": enabled}, check=True, capture_output=True, text=True)
-                tracing = enabled == "1" and command == "claude"
+                tracing = enabled == "1" and Path(command).name in {"claude", "codex"}
                 self.assertEqual("SYS_PTRACE" in result.stdout, tracing)
                 self.assertEqual(":/strace:rw,Z" in result.stdout, tracing)
                 self.assertEqual((Path(directory) / "container/strace").exists(), tracing)
@@ -57,6 +57,26 @@ printf '%s\\0' "${mounts[@]}" "${strace_options[@]}" "$agent_image"
 
 @unittest.skipUnless(os.environ.get("CONTEXT_INSPECTOR_TEST_STRACE") == "1", "opt-in isolated strace container")
 class StraceContainerTests(unittest.TestCase):
+    def test_installed_claude_and_codex_trace_without_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for harness in ("claude", "codex"):
+                trace = root / harness
+                trace.mkdir(mode=0o700)
+                command = ["podman", "run", "--rm", "--network", "none",
+                           "--userns=keep-id:uid=1000,gid=1000", "--user", "1000:1000",
+                           "--cap-add", "SYS_PTRACE", "--env", "HOME=/tmp", "--env", "CODEX_HOME=/tmp/codex",
+                           "--volume", f"{trace}:/strace:rw,Z", "--entrypoint", "bash",
+                           os.environ.get("CONTEXT_INSPECTOR_STRACE_TEST_IMAGE", "localhost/context-inspector-strace-test:089"),
+                           "-c", 'umask 077; strace -ffttv -A -o /strace/pid /usr/local/bin/"$1" --version',
+                           "fixture", harness]
+                result = subprocess.run(command, capture_output=True, text=True, timeout=45)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                files = list(trace.glob("pid.*"))
+                self.assertTrue(files)
+                self.assertTrue(all(file.stat().st_mode & 0o777 == 0o600 for file in files))
+                self.assertIn(f'/usr/local/bin/{harness}', "\n".join(file.read_text() for file in files))
+
     def test_nonroot_child_tracing_io_exit_and_append(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); trace = root / "trace"; trace.mkdir(mode=0o700)

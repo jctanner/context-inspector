@@ -60,6 +60,7 @@ class CodexContextTests(unittest.TestCase):
         self.assertEqual(reply["flow_id"], first["flow_id"])
         self.assertEqual(reply["exact_response"]["messages"][-1]["body"], terminal["payload"]["body"])
         self.assertEqual(reply["response"]["content_blocks"][0]["value"]["call_id"], "call-1")
+        self.assertEqual(usage["occurred_at"], "2026-09-23T12:00:00Z")
         self.assertEqual(usage["used_input_tokens"], 100)
         self.assertEqual(usage["components"]["uncached_input_tokens"], 40)
         self.assertIsNone(usage["percent"])

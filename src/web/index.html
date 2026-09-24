@@ -22,6 +22,7 @@
       <button id="nav-memory" type="button" aria-controls="memory-section">~/.claude</button>
       <button id="nav-workspace" type="button" aria-controls="workspace-section">/workspace</button>
       <button id="nav-strace" type="button" aria-controls="strace-section">/strace</button>
+      <button id="nav-mlflow" type="button" aria-controls="mlflow-section">MLflow</button>
       <div class="experiment-controls">
       <form id="skill-count-form" novalidate>
         <label for="skill-count">Generated skills</label>
@@ -63,6 +64,11 @@
             <button id="clear-history" class="secondary-button" type="button" disabled title="Clear displayed context history without stopping Claude">Clear history</button>
           </div>
         </div>
+        <section class="context-history" aria-labelledby="context-history-title">
+          <strong id="context-history-title">Context over time</strong>
+          <div id="context-history-chart"></div>
+          <p id="context-history-note">Awaiting measured percentages.</p>
+        </section>
         <section class="context-meter" aria-labelledby="context-meter-title">
           <div class="context-meter-labels">
             <strong id="context-meter-title">Context usage</strong>
@@ -143,6 +149,22 @@
       <p>Up to 500 matching lines, 128 MiB scanned, or 5 seconds per search. Lines over 64 KiB, links and special files are skipped. Incomplete searches are labeled.</p>
       <p id="strace-status" role="status">Enter text to search the trace files.</p>
       <ol id="strace-results" aria-label="Trace search results"></ol>
+    </section>
+    <section id="mlflow-section" aria-labelledby="mlflow-title" hidden>
+      <header class="memory-header"><div><h2 id="mlflow-title">MLflow traces</h2>
+        <p>Agent turns and tool spans from this stack run. Select a trace to inspect its details.</p></div></header>
+      <form id="mlflow-filter">
+        <label for="mlflow-session">Native session ID</label>
+        <input id="mlflow-session" list="mlflow-sessions" maxlength="200" placeholder="All sessions" autocomplete="off">
+        <datalist id="mlflow-sessions"></datalist>
+        <button id="mlflow-refresh" type="submit">Refresh</button>
+        <label><input id="mlflow-auto" type="checkbox" checked> Refresh every 10 seconds</label>
+      </form>
+      <p id="mlflow-status" role="status" aria-live="polite">Open this tab to load traces.</p>
+      <div class="mlflow-layout">
+        <div><ol id="mlflow-list" aria-label="MLflow traces"></ol><button id="mlflow-more" type="button" hidden>Load older traces</button></div>
+        <div id="mlflow-detail" aria-label="Selected trace"><p>Select a trace to inspect its spans.</p></div>
+      </div>
     </section>
     <dialog id="start-dialog" aria-labelledby="start-dialog-title" aria-describedby="start-dialog-help">
       <form id="start-dialog-form">

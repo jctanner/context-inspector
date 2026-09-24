@@ -1,8 +1,10 @@
 {
-  "name": "context-inspector-claude-tracing",
+  "name": "context-inspector-harness-tracing",
   "private": true,
   "version": "0.0.0",
   "dependencies": {
-    "@mlflow/claude-code": "0.4.0"
+    "@mlflow/claude-code": "0.4.0",
+    "@mlflow/codex": "0.4.0",
+    "@mlflow/core": "0.4.0"
   }
 }

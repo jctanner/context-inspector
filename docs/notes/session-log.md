@@ -1272,3 +1272,92 @@ host fallback only when inspector cache absent. No model entitlements inferred.
 Fourteen affected tests pass; updated backend returns both from inspector catalog.
 Task 088 complete, ADR-0042 recorded. Backend restart required; no live-session
 changes. Earlier stale-browser suggestion was unsupported.
+
+## 2026-09-23 — OAuth syscall tracing enabled
+
+Task 089 implements explicit personal-stack request for tracing even with OAuth.
+Shared wrapper/image/mounts now cover both CLIs; /strace visible on both profiles
+and reconnect. Opt-out and cleanup retained, no live attachment. ADR-0043
+supersedes earlier OAuth exclusion. 226 tests run, five skipped, remaining pass;
+additional isolated non-root Claude/Codex tracing test passes without credentials.
+Browser OAuth capabilities and five search scenarios pass; build/syntax/whitespace
+pass. Main stack untouched; backend restart and new session required.
+
+## 2026-09-23 — MLflow Codex gateway investigation
+
+Task 090 reviewed checkout 25b1af314 and official guide. Gateway traces individual
+requests, optionally mirrors spans under caller traceparent. Session metadata
+groups traces but raw proxy does not extract native Codex session IDs. Guide has
+subscription/API-key inconsistency. Separate OTLP ingestion recognizes Codex.
+Recorded evidence and request-level exporter proposal in mlflow-codex-trace-grouping.md.
+No implementation, service, credential or checkout changes.
+
+## 2026-09-23 — Existing Codex MLflow hook integration discovered
+
+Task 091: Codex source exposes notify completion IDs plus modern plugin hooks.
+MLflow checkout already contains @mlflow/codex 0.4.0 using notify and transcripts
+for AGENT/LLM/TOOL turn traces with native session grouping. This corrects earlier
+request-only integration assumptions. Recorded callback concurrency, transcript
+counters and shutdown validation needs. Installed CLI features command ran in
+an isolated network-free container; no live hooks, credentials or app changes.
+
+## 2026-09-23 — Codex MLflow integration started
+
+Task 092 implements the existing notify package, with exact native turn slicing, conservative usage normalization and bounded export draining. Recorded upstream parser/usage defect. No active stack restart planned.
+
+## 2026-09-24 — Codex MLflow integration completed
+
+Task 092 done; ADR-0044 accepted. Native notify queue, exact-turn snapshots and
+unmodified @mlflow/codex/core exporter wired into normal Codex OAuth launches.
+Usage normalized conservatively; native IDs and source metadata retained.
+Published package ignores CODEX_HOME; isolated snapshot HOME fixes discovery.
+Installed CLI requires overrides on innermost exec/resume; native TUI also tested.
+Interactive title generation emits a separate native completion callback; IDs are
+preserved without inferred attribution. Recorded defect moved to fixed after
+adapter validation. Exports isolate terminal signals and drain on normal exit;
+private diagnostics, existing notify chaining and original CLI exit preserved.
+238 regression tests run, seven skipped, all others pass. Separate native Codex
+and Claude MLflow container tests both pass (34.9s), including tool results,
+turn/session IDs, per-turn usage, interruption, interactive /exit and existing
+callback preservation. Local fixture models, no real credentials. No main stack
+restart, host settings/auth edits or live-session changes. User-managed restart
+and new Codex session activate the completed integration.
+
+## 2026-09-24 — Integrated MLflow browser
+
+Task 093 adds stack-owned REST adapter and MLflow tab. Asked default scope;
+proceeded with recommended all stack traces plus exact native-session filter
+while no reply was available. API/browser tests verify same-origin reads,
+private/no-store responses, scoped experiment, paging/filter parameters, spans
+and exact nanosecond/raw JSON text, disabled/error/empty states and mobile layout.
+Real MLflow v3.16.0 returns current artifact schema with start_time_unix_nano
+and parent_span_id; adapter also handles legacy schema. Known traces/get failure
+is avoided using trace info plus MLflow UI artifact endpoint, not declared fixed.
+No stack restart or real trace reads/writes during validation. ADR-0045 records
+the architecture; final regression/build checks pending.
+
+Task 093 completed: 246 regression tests run, eight skipped, others pass; real
+MLflow v3.16.0 REST test, MLflow/strace browser fixtures and production build pass.
+Browser fixture additionally verifies visible polling/hidden-tab cancellation.
+Task moved to done; PLAN/README/ADR updated. No main stack restart; normal backend
+restart and browser refresh activate. Existing ephemeral data lifetime unchanged.
+
+## 2026-09-24 — MLflow trace presentation
+
+Task 094 completed after comparing the local MLflow explorer's navigation/detail
+structure. Replaced generic stacked disclosures with compact metrics, semantic
+badges, searchable span timeline and selected-span tabs with readable I/O cards.
+Recorded timing and parent IDs drive the visualization; raw JSON and provenance
+remain available. No architecture change from ADR-0045. Production build and
+Playwright fixture passed (17 requests); desktop/mobile screenshots visually
+inspected and diff whitespace check passed. Frontend rebuilt for browser refresh.
+No main-stack restart or active-session changes.
+
+## 2026-09-24 — Context percentage history
+
+Task 095 done. Usage events lacked timestamps, so source occurred_at is now
+propagated for Claude and Codex. SVG graph uses actual capture time and existing
+usage/internal-call filters, marks unknowns as gaps and labels loaded history.
+ADR-0046 records scope. 32 context tests and browser fixture pass, production build
+passes, desktop screenshot inspected. Clear/reset and responsive layout verified.
+No stack restart; normal backend restart and browser refresh activate.

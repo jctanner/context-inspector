@@ -532,7 +532,7 @@ class ContextEventStream:
                                         snapshot = request_by_flow[flow_id]
                                         if event["sequence"] > after:
                                             yield {
-                                                "kind": "context.usage", "flow_id": flow_id, "sequence": event["sequence"],
+                                                "kind": "context.usage", "occurred_at": event.get("occurred_at"), "flow_id": flow_id, "sequence": event["sequence"],
                                                 "stream_identity": snapshot.stream_identity,
                                                 "used_input_tokens": total, "components": usage,
                                                 **self.usage_window(snapshot, total),
@@ -548,7 +548,7 @@ class ContextEventStream:
                                             snapshot = request_by_flow[flow_id]
                                             if event["sequence"] > after:
                                                 yield {
-                                                    "kind": "context.usage", "flow_id": flow_id, "sequence": event["sequence"],
+                                                    "kind": "context.usage", "occurred_at": event.get("occurred_at"), "flow_id": flow_id, "sequence": event["sequence"],
                                                     "stream_identity": snapshot.stream_identity,
                                                     "used_input_tokens": total, "components": usage,
                                                     **self.usage_window(snapshot, total),

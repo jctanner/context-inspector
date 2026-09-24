@@ -152,7 +152,7 @@ class CodexContext:
             usage = parsed["usage"] if parsed else {}
             used = usage.get("input_tokens")
             results.append({
-                "kind": "context.usage", "provider": "codex", "flow_id": call.snapshot.flow_id,
+                "kind": "context.usage", "occurred_at": event.get("occurred_at"), "provider": "codex", "flow_id": call.snapshot.flow_id,
                 "sequence": event["sequence"], "stream_identity": call.snapshot.stream_identity,
                 "used_input_tokens": used, "components": usage,
                 **usage_window(call.snapshot.exact_request, used, self.catalog, self.window, self.window_source),

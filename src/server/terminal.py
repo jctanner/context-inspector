@@ -45,10 +45,13 @@ class TerminalSession:
         self.rows = rows
         self.cols = cols
         self._loop = asyncio.get_running_loop()
+        launch_env = dict(env or os.environ)
+        self._close_timeout = (40.0 if launch_env.get("CONTEXT_INSPECTOR_HARNESS") == "codex"
+                               and launch_env.get("CONTEXT_INSPECTOR_MLFLOW_CONTAINER") else 3.0)
         self._child = PtyProcess.spawn(
             list(self.argv),
             cwd=str(self.cwd),
-            env=dict(env or os.environ),
+            env=launch_env,
             dimensions=(rows, cols),
         )
         self._history: deque[bytes] = deque(maxlen=replay_chunks)
@@ -92,7 +95,7 @@ class TerminalSession:
         self.rows = rows
         self.cols = cols
 
-    async def close(self, *, graceful_timeout: float = 3.0) -> None:
+    async def close(self, *, graceful_timeout: float | None = None) -> None:
         if self._closed:
             return
         if self._child.isalive():
@@ -103,7 +106,7 @@ class TerminalSession:
                 with contextlib.suppress(Exception):
                     os.write(self._child.fd, b"/exit\r")
             try:
-                await asyncio.wait_for(self._exit.wait(), timeout=graceful_timeout)
+                await asyncio.wait_for(self._exit.wait(), timeout=self._close_timeout if graceful_timeout is None else graceful_timeout)
             except TimeoutError:
                 await asyncio.to_thread(self._child.terminate, True)
                 with contextlib.suppress(TimeoutError):

@@ -41,9 +41,10 @@ def probe(harness, model):
     root.chmod(0o700)
     runtime = root / 'src/runtime'
     runtime.mkdir(parents=True)
-    for name in ('run.sh', 'oauth.py', 'container-entrypoint.sh', 'harness_image.py'):
+    for name in ('run.sh', 'oauth.py', 'container-entrypoint.sh', 'harness_image.py', 'strace-env.sh', 'mlflow-env.sh'):
         shutil.copyfile(project / 'src/runtime' / name, runtime / name)
     shutil.copytree(project / 'src/runtime/harnesses', runtime / 'harnesses')
+    shutil.copytree(project / 'src/runtime/strace', runtime / 'strace')
     proxy = root / 'src/proxy'
     proxy.mkdir()
     shutil.copyfile(project / 'src/proxy/live_capture.py', proxy / 'live_capture.py')

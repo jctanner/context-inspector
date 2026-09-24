@@ -33,3 +33,29 @@ configure_claude_tracing() {
     tracing_args=(--plugin-dir /opt/context-inspector/mlflow-plugin)
     echo "MLflow tracing: enabled for completed Claude turns (experiment ${experiment_id})"
 }
+
+# Codex retains its OAuth provider and proxy settings. Only telemetry goes to MLflow.
+configure_codex_tracing() {
+    agent_env+=(--env CONTEXT_INSPECTOR_CODEX_TRACING_ENABLED=0)
+    local tracking_container=${CONTEXT_INSPECTOR_MLFLOW_CONTAINER:-}
+    local experiment_id=${CONTEXT_INSPECTOR_MLFLOW_EXPERIMENT_ID:-}
+    if [[ -z ${tracking_container} || ${agent_command##*/} != codex ]]; then return; fi
+    if [[ ! ${tracking_container} =~ ^context-inspector-mlflow-[a-f0-9]{32}$ || ! ${experiment_id} =~ ^[0-9]+$ ]]; then
+        echo "ERROR: invalid stack-owned MLflow endpoint or experiment ID" >&2
+        return 1
+    fi
+    if [[ ! -f ${runtime_dir}/mlflow/node_modules/@mlflow/codex/dist/index.js ]]; then
+        echo "ERROR: Codex MLflow package missing; run npm --prefix src/runtime/mlflow ci --ignore-scripts" >&2
+        return 1
+    fi
+    mounts+=(--volume "${runtime_dir}/mlflow:/opt/context-inspector/codex-mlflow:ro,z")
+    agent_env+=(--env CONTEXT_INSPECTOR_CODEX_TRACING_ENABLED=1
+        --env "CONTEXT_INSPECTOR_SESSION_ID=${session_id}"
+        --env "MLFLOW_TRACKING_URI=http://${tracking_container}:5000"
+        --env "MLFLOW_EXPERIMENT_ID=${experiment_id}"
+        --env MLFLOW_EXPERIMENT_NAME= --env MLFLOW_TRACE_LOCATION=
+        --env MLFLOW_WORKSPACE= --env MLFLOW_MODEL_CATALOG_URI=
+        --env "NO_PROXY=localhost,127.0.0.1,${proxy_name},${tracking_container}"
+        --env "no_proxy=localhost,127.0.0.1,${proxy_name},${tracking_container}")
+    echo "MLflow tracing: enabled for completed Codex turns (experiment ${experiment_id})"
+}

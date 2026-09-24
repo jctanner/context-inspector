@@ -2,7 +2,7 @@
 # Sourced by run.sh after MLflow/MCP configuration; no live process attachment.
 configure_strace() {
     strace_options=()
-    if [[ ${agent_command##*/} != claude || ${CONTEXT_INSPECTOR_STRACE_ENABLED:-1} == 0 ]]; then
+    if [[ ( ${agent_command##*/} != claude && ${agent_command##*/} != codex ) || ${CONTEXT_INSPECTOR_STRACE_ENABLED:-1} == 0 ]]; then
         return
     fi
     local trace_dir="${project_dir}/container/strace"
@@ -17,11 +17,11 @@ configure_strace() {
     digest=$( { printf '%s\n' "${base_id}"; cat "${runtime_dir}/strace/image/Containerfile"; } | sha256sum)
     trace_image="localhost/context-inspector-claude-strace:${digest:0:20}"
     if ! podman image exists "${trace_image}"; then
-        echo "Building Claude strace image (base image unchanged)…" >&2
+        echo "Building harness strace image (base image unchanged)…" >&2
         podman build --build-arg "BASE_IMAGE=${agent_image}" --tag "${trace_image}" "${runtime_dir}/strace/image"
     fi
     agent_image=${trace_image}
     mounts+=(--volume "${trace_dir}:/strace:rw,Z")
     strace_options=(--cap-add SYS_PTRACE --env CONTEXT_INSPECTOR_STRACE_ENABLED=1)
-    echo "Claude syscall trace: ${trace_dir}/pid.* (append mode; sensitive data)" >&2
+    echo "${agent_command##*/} syscall trace: ${trace_dir}/pid.* (append mode; sensitive data)" >&2
 }

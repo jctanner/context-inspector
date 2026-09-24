@@ -67,8 +67,8 @@ credential-file replacement remain on the shared directory. OAuth launches ignor
 optional user/project/local settings sources to prevent inherited provider routing;
 managed policy still applies. Vertex settings behavior is unchanged.
 
-Both OAuth profiles exclude ADC/API-key routing and disable strace and Claude
-MLflow export. MCP/generated-skill experiment controls are hidden; native skills
+Both OAuth profiles exclude ADC/API-key routing and disable Claude MLflow export.
+Syscall tracing and the `/strace` search tab are enabled for both OAuth harnesses. MCP/generated-skill experiment controls are hidden; native skills
 remain subject to the CLI’s own behavior. Workspace
 browsing and the native terminal remain available. The inspected traffic includes
 Claude HTTP/SSE and Codex Responses WebSocket/HTTP fallback. Codex comparisons show
@@ -109,21 +109,37 @@ do not run this startup reset.
 
 `src/bin/context-inspector` also starts a disposable MLflow container, waits for
 its health endpoint, then starts the inspector. Open **http://127.0.0.1:5000**
-on the host to use MLflow's own UI. New Claude sessions automatically export
+on the host to use MLflow's own UI. New Claude/Vertex and Codex/OAuth sessions automatically export
 completed turns into the **Claude Code** experiment. No host MLflow Python
 dependency or manual `/mlflow-tracing:setup` is needed.
 
+Use the **MLflow** tab in Context Inspector to browse these traces without opening
+another hostname or port. The backend reads the stack-owned MLflow REST API;
+your browser only connects to Context Inspector. The tab shows all traces in the
+current stack run, with native session filtering, older pages, and selectable
+span details (inputs, outputs, status, timing, usage, attributes and raw JSON).
+**Show this session** filters by a trace's recorded native session ID. It does not
+guess a mapping between Claude's session ID and the Inspector's session ID.
+
+The visible tab refreshes its list every ten seconds; loading older pages pauses
+automatic refresh. Trace details stay open until you select/reload a trace.
+Disabled, unavailable and empty MLflow states are shown in the tab. This browser
+is read-only; it does not expose MLflow administration. Existing wire-inspection
+tabs and the standalone MLflow UI remain available. Each upstream MLflow response is limited
+to 16 MiB; larger traces show an explicit viewer-limit error. A backend restart
+and browser refresh activate the tab; MLflow's ephemeral lifetime is unchanged.
+
 On first tracing-enabled startup the stack installs the locked
-`@mlflow/claude-code@0.4.0` package locally and builds a cached derived agent image
+`@mlflow/claude-code@0.4.0` and `@mlflow/codex@0.4.0` packages locally and builds a cached derived agent image
 with Node 24 and the complete latest harness packages described above. Your original
 `AGENT_IMAGE` is unchanged. The official hook
 bundle and a small timeout adapter are mounted read-only in the agent; no hooks
 or experiment IDs are written into your existing Claude settings. The adapter
 runs the upstream Stop hook with a 30-second deadline and 5-second kill grace.
-MLflow and Claude use the same private Podman network; tracking traffic bypasses
+MLflow and the agent container use the same private Podman network; tracking traffic bypasses
 the MITM proxy and uses the unique MLflow container hostname, not the host port.
 
-**Restart the stack and create a new Claude session to activate tracing.** Finish
+**Restart the stack and create a new Claude/Vertex or Codex/OAuth session to activate tracing.** Finish
 a turn, then open MLflow → Claude Code → Traces. The pinned plugin exports at
 Claude's Stop event (when it finishes responding); you need not exit Claude.
 Traces carry Claude's session ID and available tool IDs/subagent structure.
@@ -132,6 +148,27 @@ be estimated and some auxiliary model requests are absent. The inspector's wire
 captures and request-number comparisons are unchanged; span-to-request joining
 is not implemented yet. Model pricing uses the package's bundled snapshot, with
 remote catalog fetching disabled.
+
+Codex uses its native `notify` callback, configured only for the inspector launch.
+No host Codex settings or OAuth endpoints change. The adapter reads the exact
+notified turn from the inspector transcript, then passes a private snapshot to
+MLflow. Traces include searchable `codex.thread_id`, `codex.turn_id`, and
+`context_inspector.session_id` metadata. The native thread ID also groups the
+MLflow session. Native auxiliary callbacks (such as title generation) can create
+additional traces under their own thread IDs; they are not silently attributed
+to the user's turn. Captured session-source metadata is retained when available.
+Usage is derived from cumulative transcript counters when a valid
+baseline exists; otherwise it is omitted. Span timings and LLM/tool structure
+remain transcript reconstructions, not one-to-one wire request measurements.
+
+The existing inspector `CODEX_HOME/config.toml` notification command is chained
+with its original payload. Conflicting command-line/project notify configuration
+is rejected rather than silently replaced. Completed exports and private errors
+are logged to `container/home/evaluator/.codex/mlflow-tracing.log` (mode 0600).
+Exports have a 20-second deadline; normal Codex exit drains queued work for up to
+35 seconds. Inspector Stop allows 40 seconds for traced Codex sessions. Forced
+container removal and interruption before a completion callback can lose traces;
+there is no automatic retry/replay. Claude/OAuth MLflow tracing remains disabled.
 
 Interrupted/error turns, disabled hooks or an unavailable tracking server can
 leave missing traces. Hook failures are best-effort and do not block Claude;
@@ -175,7 +212,7 @@ Reproducible disposable-container smoke tests (free ports, isolated fake model,
 no real model credentials/calls or user-state mounts):
 
 ```bash
-CONTEXT_INSPECTOR_TEST_MLFLOW=1 .venv/bin/python -m unittest src.tests.test_mlflow.MLflowContainerTests src.tests.test_claude_mlflow.ClaudeMLflowContainerTests
+CONTEXT_INSPECTOR_TEST_MLFLOW=1 .venv/bin/python -m unittest src.tests.test_mlflow.MLflowContainerTests src.tests.test_claude_mlflow.ClaudeMLflowContainerTests src.tests.test_codex_mlflow.CodexMLflowContainerTests
 ```
 
 Configuration follows MLflow's [official image documentation](https://mlflow.org/docs/latest/ml/docker/)
@@ -393,9 +430,9 @@ projects into the interpreted context view without replacing the raw capture.
 
 ## Run the current prototype
 
-### Claude syscall tracing
+### Harness syscall tracing
 
-New Claude containers run under `strace -ffttv -A -o /strace/pid`. The project
+New Claude and Codex containers, including OAuth profiles, run under `strace -ffttv -A -o /strace/pid`. The project
 directory `container/strace` is bind-mounted at `/strace`; each traced process or
 thread writes `pid.<PID>`. `-A` appends instead of truncating reused PID files, so
 files can contain reused PIDs within one Claude session. Normal stack startup
@@ -413,9 +450,9 @@ Incomplete searches are labeled. Submit again for new log data; use offline sear
 when you need an exhaustive scan beyond those limits.
 
 The launcher builds a cached strace image layer over the selected agent image,
-including MLflow's Node layer when enabled. Only the Claude container receives
+including MLflow's Node layer when enabled. Only the agent container receives
 `SYS_PTRACE`; default seccomp and SELinux remain enabled. Trust bootstrap runs
-first, then both strace and Claude execute as UID/GID 1000. No privileged container,
+first, then both strace and the selected CLI execute as UID/GID 1000. No privileged container,
 host ptrace changes, or tracing of the proxy/readiness probe is used.
 
 **Trace logs are sensitive and potentially large:** syscall arguments can expose

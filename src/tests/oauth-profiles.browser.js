@@ -19,7 +19,7 @@ async (page) => {
       await context.route("**/api/sessions", r => {
         const body = r.request().postDataJSON(); requests.push(body);
         active = { session_id: "fixture", pid: 1, alive: true, harness: body.harness, auth_mode: body.auth_mode,
-          selected_model: body.model, capabilities: harness === "claude" ? ["context", "usage", "claude_files"] : ["context", "usage"] };
+          selected_model: body.model, capabilities: harness === "claude" ? ["context", "usage", "claude_files", "strace"] : ["context", "usage", "strace"] };
         return r.fulfill({ json: active });
       });
       await context.route("**/api/sessions/fixture/context-history?*", r => r.fulfill({ json: { events: [], cursor: 0, total: 0, next_before: null } }));
@@ -37,13 +37,14 @@ async (page) => {
       await view.locator("#start-confirm").click();
       await view.locator("#status").filter({ hasText: "OAuth" }).waitFor();
       check(requests.length === 1 && requests[0].harness === harness && requests[0].auth_mode === "oauth" && requests[0].model === model, "exact profile submitted");
-      for (const id of ["#nav-strace", "#mcp-count-form", "#skill-count-form"])
+      for (const id of ["#mcp-count-form", "#skill-count-form"])
         check(await view.locator(id).isHidden(), `${id} unsupported for OAuth`);
       check(await view.locator("#nav-memory").isVisible() === (harness === "claude"), "Claude file capability");
+      check(await view.locator("#nav-strace").isVisible(), "OAuth trace search available");
       await view.reload();
       await view.locator("#status").filter({ hasText: model }).waitFor();
       check(requests.length === 1, "reconnect must not start another CLI");
-      check(await view.locator("#nav-strace").isHidden(), "capabilities survive reconnect");
+      check(await view.locator("#nav-strace").isVisible(), "trace search survives reconnect");
     } finally { await context.close(); }
   }
   return { claudeOAuth: true, codexOAuth: true, nativeCatalogChoice: true, capabilities: true, reconnect: true, realSessions: false };

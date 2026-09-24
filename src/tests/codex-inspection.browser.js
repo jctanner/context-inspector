@@ -15,7 +15,7 @@ async (page) => {
     await view.goto("http://127.0.0.1:8877");
     await view.locator("#flow-count").filter({ hasText: "2 requests" }).waitFor();
     check((await view.locator("#status").textContent()).includes("Codex connected · OAuth · synthetic-model"), "launch metadata label");
-    for (const selector of ["#nav-memory", "#nav-strace", "#mcp-count-form", "#skill-count-form"])
+    for (const selector of ["#nav-memory", "#mcp-count-form", "#skill-count-form"])
       check(await view.locator(selector).isHidden(), `unsupported Codex control hidden: ${selector}`);
     const meter = await view.locator("#context-meter-value").textContent();
     check(meter.includes("120 input tokens") && meter.includes("context limit unknown"), "no invented context window");

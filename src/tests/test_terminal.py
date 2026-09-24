@@ -47,6 +47,23 @@ class TerminalSessionTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await session.close(graceful_timeout=0.1)
 
+    async def test_traced_codex_close_allows_export_drain(self) -> None:
+        import sys
+        command = ('import signal,time; signal.signal(signal.SIGINT, signal.SIG_IGN); '
+                   'print("READY", flush=True); input(); time.sleep(3.3); print("DRAINED", flush=True)')
+        env = {**os.environ, "CONTEXT_INSPECTOR_HARNESS": "codex",
+               "CONTEXT_INSPECTOR_MLFLOW_CONTAINER": "fixture"}
+        session = TerminalSession((sys.executable, "-c", command), cwd=DEFAULT_RUNNER.parent, env=env)
+        queue = session.subscribe()
+        try:
+            await bytes_until(queue, b"READY")
+            await session.close()
+            output = await bytes_until(queue, b"DRAINED")
+            self.assertIn(b"DRAINED", output)
+            self.assertEqual(session._child.exitstatus, 0)
+        finally:
+            await session.close(graceful_timeout=.1)
+
     async def test_close_terminates_uncooperative_child(self) -> None:
         session = TerminalSession(("/bin/sh", "-c", "trap '' INT TERM; while :; do sleep 1; done"), cwd=DEFAULT_RUNNER.parent)
         await session.close(graceful_timeout=0.1)

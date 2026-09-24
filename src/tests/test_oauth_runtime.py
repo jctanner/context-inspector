@@ -111,9 +111,10 @@ class OAuthRuntimeTests(unittest.TestCase):
         project = self.root / "project"
         runtime = project / "src/runtime"
         runtime.mkdir(parents=True)
-        for name in ("run.sh", "oauth.py", "container-entrypoint.sh", "harness_image.py"):
+        for name in ("run.sh", "oauth.py", "container-entrypoint.sh", "harness_image.py", "strace-env.sh", "mlflow-env.sh"):
             shutil.copyfile(Path("src/runtime") / name, runtime / name)
         shutil.copytree(Path("src/runtime/harnesses"), runtime / "harnesses")
+        shutil.copytree(Path("src/runtime/strace"), runtime / "strace")
         python = project / ".venv/bin/python"
         python.parent.mkdir(parents=True)
         python.symlink_to(sys.executable)
@@ -150,11 +151,11 @@ if "-it" in sys.argv: sys.exit(7)
         agent = next(call for call in records if "-it" in call)
         self.assertIn(str(self.path) + ":/home/evaluator/.codex/auth.json:rw", agent)
         self.assertFalse(any(":/usr/local/bin/" in item for item in agent))
-        self.assertTrue(any("context-inspector-harnesses:" in item for item in agent))
+        self.assertTrue(any("context-inspector-claude-strace:" in item for item in agent))
         self.assertIn("CODEX_CA_CERTIFICATE=/mitmproxy-ca-cert.pem", agent)
-        self.assertIn("CONTEXT_INSPECTOR_STRACE_ENABLED=0", agent)
+        self.assertIn("CONTEXT_INSPECTOR_STRACE_ENABLED=1", agent)
         self.assertIn("--no-daemon", agent)
-        self.assertNotIn("SYS_PTRACE", agent)
+        self.assertIn("SYS_PTRACE", agent)
         self.assertNotIn("synthetic-unwanted-key", json.dumps(records))
         self.assertFalse((state / "runtime/adc.json").exists())
         self.assertEqual(self.path.read_bytes(), before)

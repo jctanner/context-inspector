@@ -94,13 +94,19 @@ def prepare_agent_image() -> str:
 def prepare_runtime(settings: MLflowSettings) -> str:
     agent_image = ""
     if settings.tracing_enabled:
-        expected = json.loads((PLUGIN_PROJECT / "package.json").read_text())["dependencies"]["@mlflow/claude-code"]
-        try:
-            installed = json.loads((PLUGIN_ROOT / "package.json").read_text())["version"]
-        except (OSError, ValueError, KeyError):
-            installed = None
-        if installed != expected or not (PLUGIN_ROOT / "bundle" / "stop.cjs").is_file():
-            print("Installing pinned Claude MLflow tracing plugin…", flush=True)
+        dependencies = json.loads((PLUGIN_PROJECT / "package.json").read_text())["dependencies"]
+        complete = True
+        for package, entry in (("@mlflow/claude-code", "bundle/stop.cjs"),
+                               ("@mlflow/codex", "dist/index.js"),
+                               ("@mlflow/core", "dist/index.js")):
+            root = PLUGIN_PROJECT / "node_modules" / package
+            try:
+                complete &= (json.loads((root / "package.json").read_text())["version"] == dependencies[package]
+                             and (root / entry).is_file())
+            except (OSError, ValueError, KeyError):
+                complete = False
+        if not complete:
+            print("Installing MLflow tracing integrations…", flush=True)
             subprocess.run(["npm", "--prefix", str(PLUGIN_PROJECT), "ci", "--ignore-scripts",
                             "--no-audit", "--no-fund"], check=True, timeout=300)
         agent_image = prepare_agent_image()
@@ -174,7 +180,7 @@ def mlflow_service(settings: MLflowSettings):
         experiment_id = create_experiment(settings) if settings.tracing_enabled else ""
         with tracing_environment(name if settings.tracing_enabled else "", experiment_id, agent_image):
             if settings.tracing_enabled:
-                print(f"Claude tracing enabled: {settings.experiment_name} (experiment {experiment_id})", flush=True)
+                print(f"Claude/Codex tracing enabled: {settings.experiment_name} (experiment {experiment_id})", flush=True)
             yield
     finally:
         try:

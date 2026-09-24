@@ -272,6 +272,7 @@ class ContextEventStreamTests(unittest.IsolatedAsyncioTestCase):
             usage = await asyncio.wait_for(anext(stream), 1)
             self.assertEqual(usage["kind"], "context.usage")
             self.assertEqual(usage["used_input_tokens"], 60)
+            self.assertEqual(usage["occurred_at"], "2026-08-19T12:00:01Z")
             self.assertEqual(usage["percent"], 30.0)
             self.assertEqual(usage["context_window_source"], "test limit")
             await stream.aclose()
