@@ -16,6 +16,12 @@ class WebLayoutRegressionTests(unittest.TestCase):
         self.assertIn('event.kind === "response.block"', source)
         self.assertIn("transport chunks collapsed", source)
 
+    def test_codex_websocket_messages_are_grouped_by_connection(self) -> None:
+        source = (Path(__file__).parents[1] / "web" / "main.ts").read_text()
+        self.assertIn('event.kind === "websocket.message"', source)
+        self.assertIn('kind.textContent = "Codex WebSocket connection"', source)
+        self.assertIn("logical messages", source)
+
     def test_browser_persists_and_resumes_session(self) -> None:
         source = (Path(__file__).parents[1] / "web" / "main.ts").read_text()
         self.assertIn('const SESSION_STORAGE_KEY = "context-inspector.active-session"', source)

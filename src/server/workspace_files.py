@@ -37,13 +37,15 @@ def directory(root: Path, components):
         os.close(fd)
 
 
-def listing(fd, path, after, limit):
+def listing(fd, path, after, limit, forbidden_names=frozenset()):
     def entries():
         with os.scandir(fd) as scan:
             for item in scan:
                 try:
                     info = item.stat(follow_symlinks=False)
                 except FileNotFoundError:
+                    continue
+                if item.name in forbidden_names:
                     continue
                 kind = ("directory" if stat.S_ISDIR(info.st_mode) else "symlink" if stat.S_ISLNK(info.st_mode)
                         else "file" if stat.S_ISREG(info.st_mode) else "special")
@@ -87,15 +89,19 @@ def read(fd, name, path):
     return {"path": path, "size": info.st_size, "modified_at": info.st_mtime, "content": content}
 
 
-def inspect_workspace(root, action, path="", after="", limit=100):
+def inspect_workspace(root, action, path="", after="", limit=100, *, forbidden_names=frozenset()):
     components = parts(path)
+    if any(component in forbidden_names for component in components):
+        # Match missing-file behavior so a direct read does not reveal whether a
+        # credential is present. Never rely on the browser UI to hide these paths.
+        raise HTTPException(404, "Entry no longer exists; refresh")
     if action not in ("list", "read") or (action == "read" and not components):
         raise HTTPException(400, "Invalid read-only browser operation")
     if not 1 <= limit <= 200:
         raise HTTPException(400, "Invalid page size")
     try:
         with directory(root, components if action == "list" else components[:-1]) as fd:
-            return listing(fd, path, after, limit) if action == "list" else read(fd, components[-1], path)
+            return listing(fd, path, after, limit, forbidden_names) if action == "list" else read(fd, components[-1], path)
     except FileNotFoundError:
         raise HTTPException(404, "Entry no longer exists; refresh") from None
     except PermissionError:

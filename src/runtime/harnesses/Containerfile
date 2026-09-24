@@ -1,0 +1,19 @@
+ARG BASE_IMAGE=localhost/claude-task-runner:latest
+FROM docker.io/library/node:24-bookworm-slim AS harnesses
+# Explicit refresh changes this layer even when the Containerfile is unchanged.
+ARG HARNESS_REFRESH=cached
+RUN echo "$HARNESS_REFRESH" >/tmp/harness-refresh && npm install --prefix /opt/context-inspector-harnesses --no-audit --no-fund @anthropic-ai/claude-code@latest @openai/codex@latest
+FROM ${BASE_IMAGE}
+USER root
+ENV PATH="/usr/local/bin:${PATH}"
+COPY --from=harnesses /usr/local/bin/node /usr/local/bin/node
+COPY --from=harnesses /opt/context-inspector-harnesses /opt/context-inspector-harnesses
+RUN ln -sf /opt/context-inspector-harnesses/node_modules/.bin/claude /usr/local/bin/claude && \
+    ln -sf /opt/context-inspector-harnesses/node_modules/.bin/codex /usr/local/bin/codex && \
+    helper=$(find /opt/context-inspector-harnesses -type f -name codex-code-mode-host) && \
+    test -n "$helper" && test -x "$helper" && \
+    ln -sf "$helper" /usr/local/bin/codex-code-mode-host && \
+    /usr/local/bin/claude --version && /usr/local/bin/codex --version && /usr/local/bin/codex-code-mode-host --help >/dev/null
+RUN python3 -c 'import json,subprocess; print(json.dumps({name: subprocess.check_output(["/usr/local/bin/"+name,"--version"],text=True).strip() for name in ("claude","codex")}))' > /opt/context-inspector-harnesses/versions.json
+ENV DISABLE_AUTOUPDATER=1
+USER 1000:1000

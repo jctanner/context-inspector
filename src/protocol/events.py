@@ -9,6 +9,7 @@ from typing import Any
 
 
 PROTOCOL_VERSION = "1.0"
+SUPPORTED_PROTOCOL_VERSIONS = {"1.0", "1.1"}
 EVENT_KINDS = {
     "request.started",
     "response.started",
@@ -16,6 +17,8 @@ EVENT_KINDS = {
     "flow.completed",
     "flow.error",
     "stream.gap",
+    "websocket.message",
+    "websocket.closed",
 }
 SENSITIVE_HEADERS = {
     "authorization",
@@ -164,6 +167,21 @@ def _validate_payload(kind: str, payload: Any) -> None:
         _require(payload["last_missing_sequence"] >= payload["first_missing_sequence"], "missing sequence interval is reversed")
         _nonempty_string(payload.get("reason"), "payload.reason")
         _require(isinstance(payload.get("archive_may_recover"), bool), "payload.archive_may_recover must be boolean")
+    elif kind == "websocket.message":
+        _exact_keys(payload, {"message_index", "direction", "message_type", "timestamp", "body"}, "payload")
+        _nonnegative_integer(payload.get("message_index"), "payload.message_index")
+        _require(payload.get("direction") in {"client_to_server", "server_to_client"}, "payload.direction is invalid")
+        _require(payload.get("message_type") in {"text", "binary"}, "payload.message_type is invalid")
+        _require(isinstance(payload.get("timestamp"), (int, float)) and not isinstance(payload.get("timestamp"), bool), "payload.timestamp must be numeric")
+        _body(payload.get("body"), "payload.body")
+    elif kind == "websocket.closed":
+        _exact_keys(payload, {"message_count", "close_code", "closed_by_client", "error", "archive_status"}, "payload")
+        _nonnegative_integer(payload.get("message_count"), "payload.message_count")
+        code = payload.get("close_code")
+        _require(code is None or type(code) is int and 1000 <= code <= 4999, "payload.close_code is invalid")
+        _require(payload.get("closed_by_client") is None or type(payload["closed_by_client"]) is bool, "payload.closed_by_client is invalid")
+        _require(type(payload.get("error")) is bool, "payload.error must be boolean")
+        _require(payload.get("archive_status") in {"written", "failed"}, "payload.archive_status is invalid")
 
 
 def validate_event(event: Any) -> None:
@@ -171,13 +189,15 @@ def validate_event(event: Any) -> None:
 
     _require(isinstance(event, dict), "event must be an object")
     _exact_keys(event, TOP_LEVEL_FIELDS, "event")
-    _require(event.get("protocol_version") == PROTOCOL_VERSION, "unsupported protocol_version")
+    version = event.get("protocol_version")
+    _require(version in SUPPORTED_PROTOCOL_VERSIONS, "unsupported protocol_version")
     _nonempty_string(event.get("event_id"), "event_id")
     _nonempty_string(event.get("session_id"), "session_id")
     _require(isinstance(event.get("sequence"), int) and not isinstance(event["sequence"], bool) and event["sequence"] > 0, "sequence must be a positive integer")
     _timestamp(event.get("occurred_at"))
     kind = event.get("kind")
     _require(kind in EVENT_KINDS, "kind is not supported")
+    _require(version == "1.1" or not kind.startswith("websocket."), "websocket transport requires protocol_version 1.1")
 
     if kind == "stream.gap":
         _require("flow_id" not in event, "stream.gap must not have flow_id")

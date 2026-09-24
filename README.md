@@ -1,8 +1,8 @@
 # Context Inspector
 
-Context Inspector is a proposed local GUI that combines:
+Context Inspector is a local GUI that combines:
 
-- an interactive browser terminal connected to the real Claude CLI running in
+- an interactive browser terminal connected to the real Claude or Codex CLI running in
   the existing agent container; and
 - a live inspector that compares every captured model request with its
   predecessor and shows the context block by block: what was **added**,
@@ -19,6 +19,65 @@ sidecar; they are not reconstructed from the terminal transcript.
 
 Implementation code lives exclusively under `src/`. Project state and design
 records follow the filesystem-native work ledger indexed by [`PLAN.md`](PLAN.md).
+
+## Harness and authentication choices
+
+Choose **Start session**, then a harness, authentication method and model:
+
+- **Claude / Vertex** retains the existing Google ADC configuration.
+- **Claude / OAuth** reuses the Linux host's Claude subscription login.
+- **Codex / OAuth** reuses the Linux host's ChatGPT login. Models come from the
+  inspector’s own `container/home/evaluator/.codex/models_cache.json`. Before
+  that file exists, the host model cache supplies bootstrap choices. Cached
+  availability is not a guarantee of account entitlement.
+
+All profiles run complete Claude and Codex installations inside the proxy-configured
+agent image. Packages are installed as `@anthropic-ai/claude-code@latest` and
+`@openai/codex@latest`, including Codex's companion execution helper. Host CLI
+executables are not mounted. OAuth still reuses host credentials separately;
+there is no shared host app-server requirement or separate browser login.
+
+The derived image is built automatically and cached; the original `AGENT_IMAGE`
+is unchanged. Latest means latest at installation time. To refresh the packages:
+
+```sh
+.venv/bin/python -m src.runtime.harness_image --refresh
+```
+
+For a custom base, pass `--base IMAGE` matching the launcher's `AGENT_IMAGE`.
+Stop/start the inspector session afterward to use the refreshed image. Existing
+sessions are unaffected. Actual versions are recorded inside the image at
+`/opt/context-inspector-harnesses/versions.json` and printed during startup.
+The validated build contains Claude 2.1.281 and Codex 0.156.1; these are observations,
+not version restrictions. Startup checks the installed CLI and OAuth mode.
+
+Codex currently requires its native **file** credential store; keyring/auto stores
+are rejected explicitly. Only `auth.json` is mounted from the host; other Codex
+state stays under `container/home/evaluator/.codex`. In-place native refreshes are
+shared. Host logout/login or file replacement stops the inspector session rather
+than leaving it on a stale bind mount; restart that session afterward. Concurrent
+refresh behavior is the native CLI's behavior, not an added serialization guarantee.
+
+Claude mounts the host credential directory at `/host-claude-auth`, using the
+CLI's separate secure-storage setting. The container can access that host
+directory; this mount scope was explicitly approved. Inspector settings/history
+remain under its own `container/home/evaluator/.claude`; host state is not a
+startup cleanup target or a file-browser root. Native directory locks and atomic
+credential-file replacement remain on the shared directory. OAuth launches ignore
+optional user/project/local settings sources to prevent inherited provider routing;
+managed policy still applies. Vertex settings behavior is unchanged.
+
+Both OAuth profiles exclude ADC/API-key routing and disable strace and Claude
+MLflow export. MCP/generated-skill experiment controls are hidden; native skills
+remain subject to the CLI’s own behavior. Workspace
+browsing and the native terminal remain available. The inspected traffic includes
+Claude HTTP/SSE and Codex Responses WebSocket/HTTP fallback. Codex comparisons show
+captured request fields and explicit continuation links; server-held context,
+unobserved agent identity and unknown context limits stay unknown.
+
+Build with `npm --prefix src/web run build`, then restart using the project's
+normal launcher, `src/bin/context-inspector`. Refresh the browser afterward.
+The implementation does not restart an existing stack automatically.
 
 ## Clean startup
 
@@ -56,7 +115,8 @@ dependency or manual `/mlflow-tracing:setup` is needed.
 
 On first tracing-enabled startup the stack installs the locked
 `@mlflow/claude-code@0.4.0` package locally and builds a cached derived agent image
-adding Node 24.21.0. Your original `AGENT_IMAGE` is unchanged. The official hook
+with Node 24 and the complete latest harness packages described above. Your original
+`AGENT_IMAGE` is unchanged. The official hook
 bundle and a small timeout adapter are mounted read-only in the agent; no hooks
 or experiment IDs are written into your existing Claude settings. The adapter
 runs the upstream Stop hook with a 30-second deadline and 5-second kill grace.

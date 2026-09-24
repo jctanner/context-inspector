@@ -73,6 +73,28 @@ class EventProtocolTests(unittest.TestCase):
             with self.subTest(kind=event["kind"]):
                 validate_event(event)
 
+    def test_accepts_websocket_logical_message_in_protocol_1_1(self) -> None:
+        event = envelope("websocket.message", {
+            "message_index": 0,
+            "direction": "client_to_server",
+            "message_type": "text",
+            "timestamp": 1787164951.25,
+            "body": body(b'{"type":"response.create"}'),
+        })
+        event["protocol_version"] = "1.1"
+        validate_event(event)
+
+    def test_rejects_websocket_message_in_protocol_1_0(self) -> None:
+        event = envelope("websocket.message", {
+            "message_index": 0,
+            "direction": "server_to_client",
+            "message_type": "binary",
+            "timestamp": 1787164951.25,
+            "body": body(b"binary"),
+        })
+        with self.assertRaisesRegex(ProtocolError, "requires protocol_version 1.1"):
+            validate_event(event)
+
     def test_rejects_unredacted_sensitive_header(self) -> None:
         event = envelope("request.started", {"request": {
             "method": "POST", "url": "https://example.test/messages",

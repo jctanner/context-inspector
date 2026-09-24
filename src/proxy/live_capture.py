@@ -13,6 +13,7 @@ import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 try:
     from mitmproxy import http
@@ -26,10 +27,78 @@ SENSITIVE_HEADERS = {
 }
 HOST_PATTERN = re.compile(os.environ.get("CAPTURE_HOST_RE", r"(^|\.)(anthropic\.com|googleapis\.com|googleusercontent\.com)$"), re.I)
 IGNORE_URL_PATTERN = re.compile(os.environ.get("CAPTURE_IGNORE_URL_RE", r"^https://www\.googleapis\.com/discovery/v1/apis$"), re.I)
+ANTHROPIC_MODEL_PATHS = {"/v1/messages", "/v1/messages/count_tokens"}
+VERTEX_MODEL_PATH = re.compile(r"(?:^|/)models/[^/]+:(?:rawPredict|streamRawPredict|countTokens)$", re.I)
+SENSITIVE_QUERY_KEYS = {
+    "access_token", "api_key", "apikey", "auth", "authorization", "key",
+    "oauth_token", "refresh_token", "token",
+}
+HTTP_PROTOCOL_VERSION = "1.0"
+CODEX_WEBSOCKET_HOST = "chatgpt.com"
+CODEX_WEBSOCKET_PATH = "/backend-api/codex/responses"
 
 
 def _selected(flow: Any) -> bool:
-    return bool(HOST_PATTERN.search(flow.request.pretty_host)) and not IGNORE_URL_PATTERN.search(flow.request.pretty_url)
+    """Select only known model operations; reject auth and unknown traffic early.
+
+    This guard runs before URLs, headers, or bodies are copied into addon state.
+    A host allowlist alone is not sufficient: OAuth token exchanges use Google
+    hosts also used by Vertex model requests.
+    """
+    request = flow.request
+    if codex_http_url(request.pretty_url) and request.method.upper() == "POST":
+        return True
+    if not HOST_PATTERN.search(request.pretty_host) or request.method.upper() != "POST":
+        return False
+    if IGNORE_URL_PATTERN.search(request.pretty_url):
+        return False
+    try:
+        parsed = urlsplit(request.pretty_url)
+        host = (parsed.hostname or "").lower()
+        path = unquote(parsed.path)
+        query_keys = {key.lower() for key, _ in parse_qsl(parsed.query, keep_blank_values=True)}
+    except (ValueError, UnicodeError):
+        return False
+    if parsed.username is not None or parsed.password is not None or query_keys & SENSITIVE_QUERY_KEYS:
+        return False
+    if host == "api.anthropic.com" and path in ANTHROPIC_MODEL_PATHS:
+        return True
+    if (host.endswith(".googleapis.com") or host == "googleapis.com") and VERTEX_MODEL_PATH.search(path):
+        return True
+    return False
+
+
+def codex_http_url(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+        return (parsed.scheme == "https" and parsed.hostname == CODEX_WEBSOCKET_HOST
+                and parsed.port in (None, 443) and parsed.path == CODEX_WEBSOCKET_PATH
+                and not parsed.query and not parsed.fragment
+                and parsed.username is None and parsed.password is None)
+    except (ValueError, UnicodeError):
+        return False
+
+
+def _codex_websocket_selected(flow: Any) -> bool:
+    """Match only Codex's source-verified default ChatGPT Responses socket."""
+    request = flow.request
+    if request.method.upper() != "GET" or request.pretty_host.lower() != CODEX_WEBSOCKET_HOST:
+        return False
+    try:
+        parsed = urlsplit(request.pretty_url)
+        path = unquote(parsed.path)
+        query_keys = {key.lower() for key, _ in parse_qsl(parsed.query, keep_blank_values=True)}
+    except (ValueError, UnicodeError):
+        return False
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname == CODEX_WEBSOCKET_HOST
+        and parsed.username is None
+        and parsed.password is None
+        and path == CODEX_WEBSOCKET_PATH
+        and not parsed.query
+        and not query_keys & SENSITIVE_QUERY_KEYS
+    )
 
 
 def _now() -> str:
@@ -91,11 +160,11 @@ class JsonlEmitter:
         self.sequence = 0
         self._lock = threading.Lock()
 
-    def emit(self, kind: str, flow_id: str | None, payload: dict[str, Any], redacted: list[str] | None = None) -> dict[str, Any]:
+    def emit(self, kind: str, flow_id: str | None, payload: dict[str, Any], redacted: list[str] | None = None, protocol_version: str = HTTP_PROTOCOL_VERSION) -> dict[str, Any]:
         with self._lock:
             self.sequence += 1
             event = {
-                "protocol_version": "1.0",
+                "protocol_version": protocol_version,
                 "event_id": uuid.uuid4().hex,
                 "session_id": self.session_id,
                 "sequence": self.sequence,
@@ -124,6 +193,63 @@ class LiveCapture:
         self.emitter = emitter or JsonlEmitter(event_path, session_id)
         self.archive_path = archive_path or Path(os.environ.get("CAPTURE_FILE", "/tmp/flows.jsonl"))
         self._state: dict[str, dict[str, Any]] = {}
+        self._websocket_state: dict[str, dict[str, int]] = {}
+
+    def websocket_start(self, flow: Any) -> None:
+        # Do not persist the upgrade request or its headers: they carry auth.
+        if _codex_websocket_selected(flow):
+            self._websocket_state[flow.id] = {"messages": 0, "archive_failed": False}
+
+    def websocket_message(self, flow: Any) -> None:
+        state = self._websocket_state.get(flow.id)
+        websocket = getattr(flow, "websocket", None)
+        messages = getattr(websocket, "messages", None)
+        if state is None or not messages:
+            return
+        message = messages[-1]
+        content = bytes(message.content)
+        is_text = bool(message.is_text)
+        body = _body(content, "application/json" if is_text else "application/octet-stream")
+        if not is_text:
+            body["decoded"] = None
+            body["decode_status"] = "unsupported"
+            body.pop("decode_error", None)
+        index = state["messages"]
+        state["messages"] += 1
+        event = self.emitter.emit("websocket.message", flow.id, {
+            "message_index": index,
+            "direction": "client_to_server" if message.from_client else "server_to_client",
+            "message_type": "text" if is_text else "binary",
+            "timestamp": float(message.timestamp),
+            "body": body,
+        }, protocol_version="1.1")
+        if not self._archive_websocket(event):
+            state["archive_failed"] = True
+
+    def websocket_end(self, flow: Any) -> None:
+        state = self._websocket_state.pop(flow.id, None)
+        if state is None:
+            return
+        websocket = getattr(flow, "websocket", None)
+        event = self.emitter.emit("websocket.closed", flow.id, {
+            "message_count": state["messages"],
+            "close_code": getattr(websocket, "close_code", None),
+            "closed_by_client": getattr(websocket, "closed_by_client", None),
+            "error": bool(getattr(flow, "error", None)),
+            "archive_status": "failed" if state["archive_failed"] else "written",
+        }, protocol_version="1.1")
+        self._archive_websocket(event)
+
+    def _archive_websocket(self, event: dict[str, Any]) -> bool:
+        # Incremental records survive long-running sockets and interrupted runs.
+        # No HTTP upgrade headers or URL are included.
+        try:
+            self.archive_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.archive_path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps({"record_id": event["event_id"], "transport": "websocket", "event": event}, separators=(",", ":")) + "\n")
+            return True
+        except OSError:
+            return False
 
     def request(self, flow: http.HTTPFlow) -> None:
         if not _selected(flow):
@@ -210,6 +336,9 @@ class LiveCapture:
         })
 
     def error(self, flow: http.HTTPFlow) -> None:
+        if flow.id in self._websocket_state:
+            self.websocket_end(flow)
+            return
         if not _selected(flow):
             return
         state = self._state.pop(flow.id, None)

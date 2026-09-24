@@ -13,7 +13,7 @@
       </div>
       <div class="session-controls">
         <span id="status" class="status" role="status">Not connected</span>
-        <button id="start" type="button">Start Claude</button>
+        <button id="start" type="button">Start session</button>
         <button id="stop" type="button" disabled>Stop</button>
       </div>
     </header>
@@ -47,10 +47,10 @@
     <main id="workspace" class="workspace" role="tabpanel" aria-labelledby="live-tab">
       <section class="pane terminal-pane" aria-labelledby="terminal-title">
         <div class="pane-header">
-          <h2 id="terminal-title">Claude CLI</h2>
+          <h2 id="terminal-title">CLI terminal</h2>
           <span id="terminal-size" class="metric">—</span>
         </div>
-        <div id="terminal" aria-label="Interactive Claude terminal"></div>
+        <div id="terminal" aria-label="Interactive CLI terminal"></div>
       </section>
       <div id="pane-divider" class="pane-divider" role="separator" aria-label="Resize terminal and context panes" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50" tabindex="0"></div>
       <section class="pane context-pane" aria-labelledby="context-title">
@@ -130,7 +130,7 @@
     <section id="strace-section" aria-labelledby="strace-title" hidden>
       <header class="memory-header">
         <div><h2 id="strace-title">/strace search</h2>
-          <p>Read-only syscall logs from container/strace. All contents are permanently cleared on stack startup and when Start Claude creates a new session. Reconnecting preserves them.</p>
+          <p>Read-only syscall logs from container/strace. All contents are permanently cleared on stack startup and when Start session creates a new session. Reconnecting preserves them.</p>
           <p>Case-sensitive literal text search across files, including hidden files and folders. Results show filename:line number.</p>
           <p>Logs may contain credentials and sensitive data. Live files can change during a search; submit again to refresh.</p>
         </div>
@@ -146,8 +146,12 @@
     </section>
     <dialog id="start-dialog" aria-labelledby="start-dialog-title" aria-describedby="start-dialog-help">
       <form id="start-dialog-form">
-        <h2 id="start-dialog-title">Start Claude</h2>
-        <p id="start-dialog-help">Choose the model for a new session. If a shared session is already running, you’ll join it unchanged.</p>
+        <h2 id="start-dialog-title">Start session</h2>
+        <p id="start-dialog-help">Choose a harness, authentication method and model. Reconnect to an existing session, or stop it before changing these choices.</p>
+        <label for="start-harness">Harness</label>
+        <select id="start-harness" name="harness"></select>
+        <label for="start-auth">Authentication</label>
+        <select id="start-auth" name="auth_mode"></select>
         <label for="start-model">Model</label>
         <select id="start-model" name="model">
           <option value="claude-haiku-4-5" selected>claude-haiku-4-5 (default)</option>

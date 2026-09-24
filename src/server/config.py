@@ -91,3 +91,19 @@ class Settings:
             "--dangerously-skip-permissions",
             *extra_args,
         )
+
+    def session_command(self, harness: str, auth_mode: str, extra_args: tuple[str, ...] = (), *, model: str | None = None) -> tuple[str, ...]:
+        if harness == "claude":
+            if auth_mode == "oauth":
+                if extra_args or self.command_override is not None:
+                    raise ValueError("Claude OAuth profiles cannot override the native command")
+                return (*self.claude_command(model=model), "--setting-sources", "", "--strict-mcp-config")
+            return self.claude_command(extra_args, model=model)
+        if (harness, auth_mode) != ("codex", "oauth"):
+            raise ValueError("Unsupported harness/auth combination")
+        if self.command_override is not None or extra_args:
+            raise ValueError("Codex profiles cannot override the native command")
+        from src.runtime.oauth import codex_command
+        if model is None:
+            raise ValueError("Select an available Codex model")
+        return (str(self.runner), "--", *codex_command(model))

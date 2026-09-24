@@ -445,12 +445,13 @@ def decode_response_bytes(raw: bytes, content_encoding: str) -> str | None:
 class ContextEventStream:
     """Tail raw events while maintaining the comparison baseline for replay."""
 
-    def __init__(self, path, session_id: str, context_window_tokens: int | None = None, context_window_source: str = "configured override", *, fallback_model: str | None = None) -> None:
+    def __init__(self, path, session_id: str, context_window_tokens: int | None = None, context_window_source: str = "configured override", *, fallback_model: str | None = None, codex_catalog: dict | None = None) -> None:
         self.path = path
         self.session_id = session_id
         self.context_window_tokens = context_window_tokens
         self.context_window_source = context_window_source
         self.fallback_model = fallback_model
+        self.codex_catalog = codex_catalog
 
     def usage_window(self, snapshot: ContextSnapshot, total: int) -> dict[str, Any]:
         window, source = resolve_window(
@@ -461,6 +462,10 @@ class ContextEventStream:
                 "percent": min(100.0, total / window * 100)}
 
     async def events(self, after: int = 0, *, mark_ready: bool = False):
+        from .codex_context import CodexContext
+        from .codex_http import CodexHttpContext
+        codex = CodexContext(self.context_window_tokens, self.context_window_source, catalog=self.codex_catalog)
+        codex_http = CodexHttpContext(codex)
         offset = 0
         previous_by_stream: dict[str, ContextSnapshot] = {}
         request_by_flow: dict[str, ContextSnapshot] = {}
@@ -485,6 +490,16 @@ class ContextEventStream:
                                 raise ProtocolError("event session_id does not match stream")
                         except (json.JSONDecodeError, ProtocolError) as exc:
                             yield {"type": "stream-error", "message": str(exc)}
+                            continue
+                        for observation in codex.consume(event):
+                            if event["sequence"] > after:
+                                yield observation
+                        http_handled = codex_http.handles(event)
+                        if http_handled or event["kind"] == "stream.gap":
+                            for observation in codex_http.consume(event):
+                                if event["sequence"] > after:
+                                    yield observation
+                        if http_handled:
                             continue
                         current = normalize_request(event)
                         if current is None:

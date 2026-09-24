@@ -10,9 +10,25 @@ requests and responses captured by the mitmproxy sidecar.
 
 - [M1 — Observable interactive session](docs/milestones/M1-observable-interactive-session.md)
 
+## OAuth and Codex implementation
+
+- [Claude OAuth and Codex harness/model plan](docs/plans/phase-04-oauth-and-codex.md)
+  — normal native OAuth runtime is implemented for both CLIs. User approved
+  shared file auth and a separate Claude credential-directory mount. Isolated
+  live Claude and Codex tool round trips passed through mitmproxy with context,
+  responses and observed usage. Codex supports WebSocket and HTTP fallback.
+  Profile selection/preflight, capability UI and reconnect are complete.
+  Validation: 218 tests run, five skipped, all others pass; production build and
+  three browser fixtures pass. The main stack has not been started or restarted.
+- [Accepted architecture](docs/decisions/ADR-0039-harness-auth-and-wire-adapters.md)
+- Fixed security defects: [credential file browser exposure](docs/bugs/fixed/credential-files-browser-exposure.md)
+  and [OAuth exchange capture](docs/bugs/fixed/oauth-exchange-body-capture.md),
+  reproduced with synthetic data and fixed in code. Live validation uses approved
+  native credential mounts; no token values or private captures are committed.
+
 ## Active tasks
 
-- None currently.
+None for Phase 04.
 
 ## Awaiting deployment
 
@@ -24,6 +40,33 @@ requests and responses captured by the mitmproxy sidecar.
   bundle is rebuilt and falls back to legacy replay until then.
 
 ## Deployment note
+
+Task 088 fixes Codex model discovery to prefer the inspector cache over the host
+cache. Host refresh had removed GPT-6 Sol/Luna while inspector still listed them.
+Fourteen affected tests pass. Restart backend to activate; running session untouched.
+
+Task 087 installs latest Claude/Codex packages in the derived agent image for all
+profiles; host executable mounts and CLI version pins are removed. Built Claude
+2.1.281/Codex 0.156.1; both real OAuth proxy tool turns passed. 225 tests run, five
+skipped, others pass. Restart backend and create a new session to activate.
+Use `.venv/bin/python -m src.runtime.harness_image --refresh` for later upgrades.
+Main stack untouched. This supersedes older pin/mount instructions below.
+
+Task 086 mounts Codex’s required code-mode execution helper and checks startup.
+Stop/start the Codex session to recreate container mounts; active session untouched.
+
+Task 085 enables catalog-derived Codex context percentages (currently 258,400
+effective tokens). 221 tests run, five skipped, all others pass; browser replay
+check passes. Restart backend and refresh to activate; active session untouched.
+
+Task 083 fixes the terminal heading and accessible label to follow the active
+harness, including reconnect. Build and browser checks pass; refresh to activate.
+
+Task 082 is complete: start with `src/bin/context-inspector`, refresh the browser,
+then choose Start session and Claude/Vertex, Claude/OAuth or Codex/OAuth. Native
+OAuth pins are Claude 2.1.280 and Codex 0.156.0; see README for binary paths and
+file-store requirements. Concurrent refresh retains native CLI semantics, without
+an added serialization guarantee. Live probes passed; the main stack stayed stopped.
 
 Task 079 clears traces before each new real Start Claude session, not just stack
 startup. Stop and shared-session joins retain logs; unsafe cleanup blocks launch.
@@ -163,6 +206,12 @@ The current Claude session has been preserved.
 
 ## Decisions
 
+- [ADR-0042 — Inspector model catalog](docs/decisions/ADR-0042-inspector-model-catalog.md)
+
+- [ADR-0041 — Container-installed harnesses](docs/decisions/ADR-0041-container-installed-harnesses.md)
+
+- [ADR-0040 — Codex catalog budgets](docs/decisions/ADR-0040-codex-catalog-context-budget.md)
+
 - [ADR-0038 — Session trace reset](docs/decisions/ADR-0038-session-trace-reset.md)
 
 - [ADR-0037 — Strace reset and search](docs/decisions/ADR-0037-strace-search-reset.md)
@@ -237,6 +286,10 @@ The current Claude session has been preserved.
 
 ## Implementation notes
 
+- [Codex context-limit evidence](docs/notes/codex-context-limits.md) — active
+  gpt-6-luna sessions report 258,400 effective tokens; catalog maximum is separate.
+  Catalog-derived meter integration is complete in task 085.
+
 - [Transcript correlation experiment](docs/notes/transcript-correlation-experiment.md) —
   exact joins demonstrated; token counting explains request 130's bad baseline.
 
@@ -246,6 +299,26 @@ The current Claude session has been preserved.
 - [Request-stream identity investigation](docs/notes/request-stream-identity-investigation.md)
 
 ## Completed setup
+
+- [Codex model picker source](docs/tasks/done/088-investigate-codex-model-picker.md).
+
+
+- [Container-installed latest harnesses](docs/tasks/done/087-container-installed-harnesses.md).
+
+- [Codex execution helper](docs/tasks/done/086-codex-execution-helper.md) — missing
+  native companion mount fixed; isolated non-root helper startup verified.
+
+- [Codex context meter](docs/tasks/done/085-codex-context-meter.md).
+
+- [Codex context-limit investigation](docs/tasks/done/084-codex-context-limit-evidence.md).
+
+- [Terminal harness title](docs/tasks/done/083-terminal-harness-title.md) — Claude
+  and Codex headings follow session metadata.
+
+- [OAuth Claude and Codex harness profiles](docs/tasks/done/082-oauth-codex-harnesses.md)
+  — native login reuse, profile selection and HTTP/WebSocket inspection validated.
+- [OAuth capture safety foundation](docs/tasks/done/081-implement-oauth-codex-safe-foundation.md).
+- [OAuth and Codex plan](docs/tasks/done/080-oauth-harness-plan.md).
 
 - [Clear traces on Start Claude](docs/tasks/done/079-strace-reset-on-start.md) —
   guarded per-session trace reset and serialized Start/Stop lifecycle.

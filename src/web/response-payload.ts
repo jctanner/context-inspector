@@ -6,6 +6,9 @@ export type ResponseChoice = { number: number; response: ResponseEvidence };
 
 /** Parse every SSE record for browsing; retain raw fields and non-JSON data. */
 export function responsePayload(response: ResponseEvidence): unknown {
+  if (response.exact_response.transport === "websocket" && Array.isArray(response.exact_response.messages)) {
+    return { transport: "websocket", messages: response.exact_response.messages };
+  }
   const body = response.exact_response.body as { decoded?: { kind?: string; value?: unknown } } | undefined;
   if (body?.decoded?.kind !== "sse" || typeof body.decoded.value !== "string") {
     throw new Error("Decoded response SSE unavailable; no reconstructed reply was substituted");
@@ -34,7 +37,7 @@ export function addResponsePayload(parent: HTMLElement, structured: HTMLElement,
     option.textContent = `Response #${choice.number} · ${choice.response.flow_id}`; select.append(option);
   }
   label.append(select);
-  const note = element("p", "comparison-label", "Decoded response events · parsed from captured SSE, not a single wire JSON document. Comparison choices are earlier responses in loaded history, not confirmed same-thread baselines. Raw SSE and wire bytes remain under Readable reply & evidence.");
+  const note = element("p", "comparison-label", "Decoded response events · captured SSE records or assembled WebSocket messages. Comparison choices are earlier responses in loaded history, not confirmed same-thread baselines. Captured bytes remain under Readable reply & evidence.");
   const host = element("div", "response-payload-host", "");
   parent.replaceChildren(label, note, host);
   let controller: AbortController | undefined;
@@ -60,7 +63,7 @@ export function addResponsePayload(parent: HTMLElement, structured: HTMLElement,
           before = responsePayload(baseline);
         }
         return { before, after, fullOnly: !choice,
-          provenance: `Complete decoded response events, pretty-printed; raw_fields preserve SSE fields. Flow ${response.flow_id}. ${choice ? `User-selected baseline: Response #${choice.number} · flow ${choice.response.flow_id}. No thread relationship inferred.` : "No comparison selected; lines are neutral, not additions."}` };
+          provenance: `Captured response events, pretty-printed; SSE fields or logical WebSocket message bytes retain their source boundaries. Flow ${response.flow_id}. ${choice ? `User-selected baseline: Response #${choice.number} · flow ${choice.response.flow_id}. No thread relationship inferred.` : "No comparison selected; lines are neutral, not additions."}` };
       },
     });
   };

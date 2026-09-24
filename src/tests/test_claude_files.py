@@ -20,6 +20,7 @@ class ClaudeFilesTests(unittest.IsolatedAsyncioTestCase):
             (root / "projects/p/memory").mkdir(parents=True)
             (root / "projects/p/memory/MEMORY.md").write_text("memory fixture")
             (root / ".settings.json").write_text('{"fixture": true}')
+            (root / ".credentials.json").write_text('{"oauth_token":"synthetic-secret"}')
             (root / "link").symlink_to(home / "outside.txt")
             (root / "dirlink").symlink_to(home)
             os.link(home / "outside.txt", root / "hardlink")
@@ -36,9 +37,14 @@ class ClaudeFilesTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
                 names = {e["name"] for e in page["entries"]}
                 self.assertIn(".settings.json", names)
+                self.assertNotIn(".credentials.json", names)
                 self.assertNotIn("outside.txt", names)
                 self.assertEqual((await read(Response(), "projects/p/memory/MEMORY.md"))["content"], "memory fixture")
                 self.assertEqual((await read(Response(), ".settings.json"))["content"], '{"fixture": true}')
+                with self.assertRaises(HTTPException) as hidden_credential:
+                    await read(Response(), ".credentials.json")
+                self.assertEqual(hidden_credential.exception.status_code, 404)
+                self.assertNotIn("synthetic-secret", hidden_credential.exception.detail)
                 for path in ("../outside.txt", "/etc/passwd", "link", "dirlink/outside.txt", "hardlink", "fifo", "missing"):
                     with self.subTest(path=path), self.assertRaises(HTTPException) as error:
                         await read(Response(), path)

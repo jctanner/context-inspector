@@ -62,7 +62,7 @@ class ClaudeMLflowTests(unittest.TestCase):
                            Mock(stdout='base-b', returncode=0), Mock(returncode=0)]
         first, second = prepare_agent_image(), prepare_agent_image()
         self.assertNotEqual(first, second)
-        self.assertTrue(first.startswith('localhost/context-inspector-claude-tracing:'))
+        self.assertTrue(first.startswith('localhost/context-inspector-harnesses:'))
 
     def test_runner_injection_and_disable(self):
         script = PLUGIN_PROJECT.parent / 'mlflow-env.sh'

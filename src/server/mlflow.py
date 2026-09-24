@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import logging
 import json
-import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -88,17 +87,8 @@ def container_command(settings: MLflowSettings, name: str) -> list[str]:
 
 
 def prepare_agent_image() -> str:
-    base_image = os.environ.get("AGENT_IMAGE", "localhost/claude-task-runner:latest")
-    base_id = subprocess.run(["podman", "image", "inspect", "--format", "{{.Id}}", base_image],
-                             check=True, capture_output=True, text=True, timeout=30).stdout.strip()
-    context = PLUGIN_PROJECT / "image"
-    digest = hashlib.sha256(base_id.encode() + (context / "Containerfile").read_bytes()).hexdigest()[:20]
-    image = f"localhost/context-inspector-claude-tracing:{digest}"
-    if subprocess.run(["podman", "image", "exists", image], check=False).returncode:
-        print("Building Claude tracing image (adds Node; leaves the base image unchanged)…", flush=True)
-        subprocess.run(["podman", "build", "--build-arg", f"BASE_IMAGE={base_image}",
-                        "--tag", image, str(context)], check=True, timeout=600)
-    return image
+    from src.runtime.harness_image import prepare_image
+    return prepare_image(os.environ.get("AGENT_IMAGE", "localhost/claude-task-runner:latest"))
 
 
 def prepare_runtime(settings: MLflowSettings) -> str:

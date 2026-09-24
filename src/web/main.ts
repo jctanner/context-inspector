@@ -2,7 +2,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WorkspaceView } from "./workspace";
 import { setupStrace } from "./strace";
-import { StartDialog } from "./start-dialog";
+import { StartDialog, type LaunchSelection } from "./start-dialog";
 import { setupMcpCount } from "./mcp-count";
 import { setupSkillCount } from "./skill-count";
 import "@xterm/xterm/css/xterm.css";
@@ -78,6 +78,7 @@ terminal.open(terminalElement);
 
 let sessionId: string | null = null;
 let selectedSessionModel: string | null = null;
+let selectedLaunch: { harness?: string | null; auth_mode?: string | null; capabilities?: string[] } = {};
 const memoryView = new WorkspaceView("memory", "/api/claude-files", "~/.claude");
 const sessionSection = document.querySelector<HTMLElement>("#session-section")!;
 const memorySection = document.querySelector<HTMLElement>("#memory-section")!;
@@ -114,12 +115,25 @@ navStrace.onclick = () => {
   traceSection.hidden = false; navStrace.setAttribute("aria-current", "page");
   document.querySelector<HTMLInputElement>("#strace-query")!.focus();
 };
+function applyLaunchCapabilities(launch: typeof selectedLaunch): void {
+  const legacy = ["claude_files", "strace", "mcp_dump", "skill_dump"];
+  const fallback = launch.harness === "codex" ? [] : launch.auth_mode === "oauth" ? ["claude_files"] : legacy;
+  const capabilities = new Set(launch.capabilities ?? fallback);
+  for (const [element, capability] of [
+    [navMemory, "claude_files"], [navStrace, "strace"],
+    [document.querySelector<HTMLElement>("#mcp-count-form")!, "mcp_dump"],
+    [document.querySelector<HTMLElement>("#skill-count-form")!, "skill_dump"],
+  ] as const) element.hidden = !capabilities.has(capability);
+  if ((!memorySection.hidden && navMemory.hidden) || (!traceSection.hidden && navStrace.hidden)) navSession.click();
+}
+
 let socket: WebSocket | null = null;
 let flowSocket: WebSocket | null = null;
 let flowCount = 0;
 let visibleRowCount = 0;
 let splitPercent = 50;
 const responseRows = new Map<string, ResponseRow>();
+const websocketRows = new Map<string, { item: HTMLLIElement; firstSequence: number; messages: number; bytes: number }>();
 const usageByFlow = new Map<string, ContextUsage>();
 const responseChoices = new Map<string, ResponseChoice>();
 const internalFlows = new Set<string>();
@@ -172,6 +186,8 @@ type ContextChange = {
 };
 
 type ContextDiff = {
+  provider?: string;
+  context_visibility?: { scope: string; previous_response_id: string | null; predecessor_observed: boolean; server_context: string };
   request_operation?: string;
   detail_url?: string;
   body_digest?: string;
@@ -193,19 +209,22 @@ type ContextDiff = {
 };
 
 type ContextUsage = {
+  provider?: string;
   kind: "context.usage";
   flow_id: string;
   sequence: number;
   stream_identity: { stream_id: string; confidence: string };
-  used_input_tokens: number;
-  components: { input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number };
-  context_window_tokens: number;
+  used_input_tokens: number | null;
+  components: { input_tokens: number | null; cache_creation_input_tokens?: number; cache_read_input_tokens?: number; cached_input_tokens?: number | null; output_tokens?: number | null; reasoning_output_tokens?: number | null };
+  context_window_tokens: number | null;
   context_window_source: string;
-  percent: number;
+  percent: number | null;
   usage_source: string;
 };
 
 type ContextResponse = {
+  provider?: string;
+  correlation?: { basis: string; confidence: string };
   detail_url?: string;
   kind: "context.response";
   flow_id: string;
@@ -255,8 +274,10 @@ function forgetSession(): void {
   localStorage.removeItem(SESSION_STORAGE_KEY);
   sessionId = null;
   selectedSessionModel = null;
+  selectedLaunch = {};
+  applyLaunchCapabilities(selectedLaunch);
   startButton.disabled = false;
-  startButton.textContent = "Start Claude";
+  startButton.textContent = "Start session";
   stopButton.disabled = true;
 }
 
@@ -266,6 +287,7 @@ function resetContextView(): void {
   flowCount = 0;
   visibleRowCount = 0;
   responseRows.clear();
+  websocketRows.clear();
   usageByFlow.clear();
   responseChoices.clear();
   internalFlows.clear();
@@ -303,6 +325,12 @@ function summarize(event: FlowEvent): string {
     const body = event.payload.body as { wire?: { byte_length?: number } } | undefined;
     return `${String(body?.wire?.byte_length ?? 0)} wire bytes at offset ${String(event.payload.offset ?? 0)}`;
   }
+  if (event.kind === "websocket.message") {
+    const body = event.payload.body as { wire?: { byte_length?: number } } | undefined;
+    const direction = event.payload.direction === "client_to_server" ? "client → server" : "server → client";
+    return `${direction} · ${String(event.payload.message_type ?? "message")} message ${String(event.payload.message_index ?? "")} · ${Number(body?.wire?.byte_length ?? 0).toLocaleString()} bytes`;
+  }
+  if (event.kind === "websocket.closed") return `WebSocket closed · ${String(event.payload.message_count)} messages · archive ${String(event.payload.archive_status)}`;
   if (event.kind === "flow.completed") return `${String(event.payload.response_body_bytes ?? 0)} response bytes archived`;
   if (event.kind === "flow.error") return String(event.payload.message ?? "Flow failed");
   return "Live stream is incomplete";
@@ -418,6 +446,10 @@ function renderContextDiff(diff: ContextDiff, existing?: HTMLLIElement): void {
   const countSummary = `+${diff.counts.added} added · −${diff.counts.removed} removed · ~${diff.counts.transformed} changed · =${diff.counts.retained} retained`;
   item.append(header, textElement("p", "event-summary context-counts", countSummary));
   item.append(comparisonGroup(diff));
+  if (diff.context_visibility) {
+    const reference = diff.context_visibility.previous_response_id;
+    item.append(textElement("p", "comparison-label context-visibility", `Captured request fields only; server-held context is not reconstructed. ${reference ? `Previous response: ${reference} (${diff.context_visibility.predecessor_observed ? "observed predecessor; comparison covers request fields only" : "predecessor not captured"}).` : "No captured continuation reference; no conversation relationship inferred."}`));
+  }
   item.append(textElement("p", "comparison-label", diff.predecessor_flow_id === null ? "First observed context" : diff.predecessor_confidence === "none" ? "Comparison: chronological · attribution unknown" : `Comparison confidence: ${diff.predecessor_confidence}`));
   if (!existing) {
     const inspect = document.createElement("button");
@@ -576,7 +608,9 @@ function responseSection(response: ContextResponse, full = false): HTMLElement {
   if (!full) return section;
   section.append(textElement("p", "response-identifiers", `Flow: ${response.flow_id} · Message: ${response.response.message_id ?? "unavailable"}`));
   const evidence = disclosure(section, "Response evidence", "response-evidence");
-  evidence.append(textElement("p", "response-provenance", "Response only · semantic blocks reconstructed from the completed captured SSE stream, correlated by exact flow_id."));
+  evidence.append(textElement("p", "response-provenance", response.provider === "codex"
+    ? `Response only · readable output derived from captured Responses events. Pairing: ${response.correlation?.basis ?? "unknown"} (${response.correlation?.confidence ?? "none"} confidence). ${response.exact_response.transport === "websocket" ? "Logical WebSocket message" : "HTTP response"} bytes are preserved below.`
+    : "Response only · semantic blocks reconstructed from the completed captured SSE stream, correlated by exact flow_id."));
   evidence.append(textElement("p", `response-purpose confidence-${response.purpose.confidence}`, `Purpose: ${response.purpose.classification.replaceAll("_", " ")} · ${response.purpose.confidence} confidence · ${response.purpose.evidence.join(", ")}`));
   const metadata = [
     response.response.model ?? "unknown model",
@@ -588,7 +622,7 @@ function responseSection(response: ContextResponse, full = false): HTMLElement {
   const exactBody = response.exact_response.body as { wire?: unknown; decoded?: unknown; decode_status?: unknown } | undefined;
   const exactWire = { ...response.exact_response, body: { wire: exactBody?.wire } };
   addEvidence(evidence, "Exact captured response metadata and wire bytes", exactWire, "exact");
-  addEvidence(evidence, "Losslessly decoded response SSE", { decoded: exactBody?.decoded, decode_status: exactBody?.decode_status }, "interpreted");
+  if (response.exact_response.transport !== "websocket") addEvidence(evidence, "Losslessly decoded response SSE", { decoded: exactBody?.decoded, decode_status: exactBody?.decode_status }, "interpreted");
   return section;
 }
 
@@ -654,14 +688,20 @@ function renderContextResponse(response: ContextResponse): void {
 }
 
 function showContextUsage(usage: ContextUsage): void {
-  meterStatus.textContent = "Latest measured request · excludes classified internal calls";
-  hasContextMeasurement = true;
+  meterStatus.textContent = usage.used_input_tokens === null ? "Latest response · usage unavailable" : "Latest measured request · excludes classified internal calls";
+  hasContextMeasurement = usage.used_input_tokens !== null;
   displayedUsageFlowId = usage.flow_id;
-  contextMeterProgress.value = usage.percent;
-  contextMeterProgress.textContent = `${usage.percent.toFixed(1)}%`;
-  contextMeterProgress.setAttribute("aria-valuetext", `${usage.used_input_tokens.toLocaleString()} of ${usage.context_window_tokens.toLocaleString()} tokens`);
-  contextMeterValue.textContent = `${usage.used_input_tokens.toLocaleString()} / ${usage.context_window_tokens.toLocaleString()} tokens · ${usage.percent.toFixed(1)}%`;
-  contextMeterDetail.textContent = `Latest measured request not classified as internal · flow ${usage.flow_id}. Uncached ${usage.components.input_tokens.toLocaleString()} + cache creation ${usage.components.cache_creation_input_tokens.toLocaleString()} + cache read ${usage.components.cache_read_input_tokens.toLocaleString()}. Usage: ${usage.usage_source}; limit: ${usage.context_window_source}.`;
+  const count = (value: number | null | undefined) => value == null ? "unknown" : value.toLocaleString();
+  const measured = usage.used_input_tokens != null;
+  const knownLimit = usage.percent != null && usage.context_window_tokens != null && measured;
+  contextMeterProgress.value = knownLimit ? usage.percent! : 0;
+  contextMeterProgress.textContent = knownLimit ? `${usage.percent!.toFixed(1)}%` : "Context limit unknown";
+  contextMeterProgress.setAttribute("aria-valuetext", knownLimit ? `${count(usage.used_input_tokens)} of ${count(usage.context_window_tokens)} tokens` : `Input ${count(usage.used_input_tokens)} tokens; context limit unknown`);
+  contextMeterValue.textContent = knownLimit ? `${count(usage.used_input_tokens)} / ${count(usage.context_window_tokens)} tokens · ${usage.percent!.toFixed(1)}%` : `${measured ? count(usage.used_input_tokens) + " input tokens" : "Usage unknown"} · context limit unknown`;
+  const components = usage.provider === "codex"
+    ? `Input ${count(usage.components.input_tokens)} (cached subset ${count(usage.components.cached_input_tokens)}); output ${count(usage.components.output_tokens)} (reasoning subset ${count(usage.components.reasoning_output_tokens)}).`
+    : `Uncached ${count(usage.components.input_tokens)} + cache creation ${count(usage.components.cache_creation_input_tokens)} + cache read ${count(usage.components.cache_read_input_tokens)}.`;
+  contextMeterDetail.textContent = `Latest measured request not classified as internal · flow ${usage.flow_id}. ${components} Usage: ${usage.usage_source}; limit: ${usage.context_window_source}.`;
 }
 
 function renderContextUsage(usage: ContextUsage): void {
@@ -736,10 +776,50 @@ function updateResponseRow(event: FlowEvent): boolean {
   return true;
 }
 
+function updateWebSocketRow(event: FlowEvent): boolean {
+  if (event.kind !== "websocket.message" || !event.flow_id) return false;
+  let row = websocketRows.get(event.flow_id);
+  if (!row) {
+    const item = createEventRow(event);
+    row = { item, firstSequence: event.sequence, messages: 0, bytes: 0 };
+    websocketRows.set(event.flow_id, row);
+    flowEventsElement.append(item);
+  }
+  row.messages += 1;
+  const body = event.payload.body as { wire?: { byte_length?: number } } | undefined;
+  row.bytes += Number(body?.wire?.byte_length ?? 0);
+  const kind = row.item.querySelector<HTMLElement>(".event-kind")!;
+  const sequence = row.item.querySelector<HTMLElement>(".event-sequence")!;
+  const summary = row.item.querySelector<HTMLElement>(".event-summary")!;
+  const time = row.item.querySelector<HTMLTimeElement>(".event-time")!;
+  sequence.textContent = row.firstSequence === event.sequence ? `#${event.sequence}` : `#${row.firstSequence}–${event.sequence}`;
+  kind.textContent = "Codex WebSocket connection";
+  time.textContent = new Date(event.occurred_at).toLocaleTimeString();
+  summary.textContent = `${row.messages} logical messages · ${row.bytes.toLocaleString()} bytes observed · latest: ${summarize(event)}`;
+  const direction = event.payload.direction === "client_to_server" ? "client to server" : "server to client";
+  const messageType = String(event.payload.message_type ?? "message");
+  const messageIndex = String(event.payload.message_index ?? row.messages - 1);
+  const messageBody = event.payload.body as { wire?: unknown; decoded?: unknown } | undefined;
+  if (messageBody?.wire) addEvidence(row.item, `Message ${messageIndex} · ${direction} · exact logical ${messageType} message bytes`, messageBody.wire, "exact");
+  if (messageBody?.decoded) addEvidence(row.item, `Message ${messageIndex} · interpreted JSON message`, messageBody.decoded, "interpreted");
+  addEvidence(row.item, `Message ${messageIndex} · event metadata`, {
+    flow_id: event.flow_id,
+    direction: event.payload.direction,
+    message_type: event.payload.message_type,
+    timestamp: event.payload.timestamp,
+    sanitization: event.sanitization,
+  }, "metadata");
+  return true;
+}
+
 function renderFlowEvent(event: FlowEvent): void {
   flowCount += 1;
   flowEmptyElement.hidden = true;
   if (updateResponseRow(event)) {
+    updateCount();
+    return;
+  }
+  if (updateWebSocketRow(event)) {
     updateCount();
     return;
   }
@@ -822,6 +902,7 @@ function clearContextHistory(): void {
   resetReadingState();
   localStorage.setItem(`${CONTEXT_CURSOR_PREFIX}${sessionId}`, String(latestContextSequence));
   responseRows.clear();
+  websocketRows.clear();
   requestRows.clear();
   flowCount = 0;
   visibleRowCount = 0;
@@ -832,7 +913,13 @@ function clearContextHistory(): void {
   if (compactView) startContextConnection(sessionId, location.protocol === "https:" ? "wss" : "ws");
 }
 
-function connectSession(id: string, selectedModel: string | null = null): void {
+function connectSession(id: string, selectedModel: string | null = null, launch: { harness?: string | null; auth_mode?: string | null; capabilities?: string[] } = {}): void {
+  selectedLaunch = launch;
+  applyLaunchCapabilities(launch);
+  const harnessLabel = launch.harness === "codex" ? "Codex" : "Claude";
+  document.querySelector<HTMLHeadingElement>("#terminal-title")!.textContent = `${harnessLabel} CLI`;
+  document.querySelector<HTMLDivElement>("#terminal")!.setAttribute("aria-label", `Interactive ${harnessLabel} terminal`);
+  const authLabel = launch.auth_mode ? ` · ${launch.auth_mode === "vertex" ? "Vertex" : "OAuth"}` : "";
   sessionId = id;
   selectedSessionModel = selectedModel;
   localStorage.setItem(SESSION_STORAGE_KEY, id);
@@ -847,7 +934,7 @@ function connectSession(id: string, selectedModel: string | null = null): void {
     startButton.disabled = true;
     startButton.textContent = "Connected";
     stopButton.disabled = false;
-    setStatus(selectedModel ? `Claude connected · ${selectedModel}` : "Claude connected", "active");
+    setStatus(`${harnessLabel} connected${authLabel}${selectedModel ? ` · ${selectedModel}` : ""}`, "active");
     statusElement.title = selectedModel ? "Model selected at session launch; changes made with /model are not reflected here." : "";
     sendResize();
     if (requestTabs.isLive) terminal.focus();
@@ -859,7 +946,7 @@ function connectSession(id: string, selectedModel: string | null = null): void {
     }
     const message = JSON.parse(String(event.data)) as { type?: string; exit_code?: number | null; message?: string };
     if (message.type === "exit") {
-      setStatus(`Claude exited (${message.exit_code ?? "unknown"})`);
+      setStatus(`${harnessLabel} exited (${message.exit_code ?? "unknown"})`);
       forgetSession();
     } else if (message.type === "error") {
       setStatus(message.message ?? "Terminal error", "error");
@@ -869,7 +956,7 @@ function connectSession(id: string, selectedModel: string | null = null): void {
     if (socket !== connectedSocket) return;
     socket = null;
     if (sessionId === id) {
-      setStatus("Browser detached; Claude is still running", "idle");
+      setStatus(`Browser detached; ${harnessLabel} is still running`, "idle");
       startButton.disabled = false;
       startButton.textContent = "Reconnect";
       stopButton.disabled = false;
@@ -880,7 +967,7 @@ function connectSession(id: string, selectedModel: string | null = null): void {
   });
 }
 
-async function startSession(model: string): Promise<string | null> {
+async function startSession(selection: LaunchSelection): Promise<string | null> {
   startButton.disabled = true;
   terminal.clear();
   setStatus("Starting containers…", "active");
@@ -888,12 +975,12 @@ async function startSession(model: string): Promise<string | null> {
     const response = await fetch("/api/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ extra_args: [], model }),
+      body: JSON.stringify({ extra_args: [], ...selection }),
     });
     if (!response.ok) throw new Error(await response.text());
-    const created = await response.json() as { session_id: string; selected_model?: string | null };
+    const created = await response.json() as { session_id: string; selected_model?: string | null; harness?: string | null; auth_mode?: string | null; capabilities?: string[] };
     resetContextView();
-    connectSession(created.session_id, created.selected_model ?? null);
+    connectSession(created.session_id, created.selected_model ?? null, created);
     return null;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not start session";
@@ -925,7 +1012,7 @@ async function resumePersistedSession(): Promise<void> {
   try {
     const response = await fetch("/api/sessions/active", { cache: "no-store" });
     if (!response.ok) throw new Error("Could not discover shared session");
-    const active = await response.json() as { session_id: string; alive: boolean; selected_model?: string | null } | null;
+    const active = await response.json() as { session_id: string; alive: boolean; selected_model?: string | null; harness?: string | null; auth_mode?: string | null; capabilities?: string[] } | null;
     if (sessionId !== null) return;
     if (!active?.alive) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -934,7 +1021,7 @@ async function resumePersistedSession(): Promise<void> {
     }
     resetContextView();
     setStatus("Joining shared session…", "active");
-    connectSession(active.session_id, active.selected_model ?? null);
+    connectSession(active.session_id, active.selected_model ?? null, active);
   } catch (error) {
     if (sessionId === null) setStatus(error instanceof Error ? error.message : "Session discovery failed", "error");
   } finally {
@@ -954,7 +1041,7 @@ startButton.addEventListener("click", () => {
   if (sessionId !== null) {
     terminal.clear();
     resetContextView();
-    connectSession(sessionId, selectedSessionModel);
+    connectSession(sessionId, selectedSessionModel, selectedLaunch);
   }
   else startDialog.show();
 });

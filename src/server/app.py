@@ -14,12 +14,15 @@ from typing import Literal
 from fastapi import FastAPI, Header, HTTPException, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .config import Settings, CLAUDE_HOME, CONTAINER_ROOT
+from .config import Settings, CLAUDE_HOME, CONTAINER_ROOT, SESSION_MODELS
+from .harnesses import get_profile, catalog
+from src.runtime.oauth import CredentialError, native_launch
 from .terminal import TerminalExit, TerminalManager
 from .flows import FlowEventStream
 from .context import ContextEventStream
+from .codex_window import session_catalog
 from .context_index import ContextIndex
 from .memory import get_memory
 from .mcp_config import get_count, set_count
@@ -54,17 +57,34 @@ class SkillCountRequest(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    harness: Literal["claude", "codex"] | None = None
+    auth_mode: Literal["vertex", "oauth"] | None = None
     extra_args: list[str] = Field(default_factory=list, max_length=32)
-    model: Literal["claude-haiku-4-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-opus-4-6"] | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def validate_profile(self):
+        get_profile(self.harness or "claude", self.auth_mode or "vertex")
+        if self.model is not None and (self.harness or "claude", self.auth_mode or "vertex") == ("claude", "vertex") and self.model not in SESSION_MODELS:
+            raise ValueError("Unsupported session model")
+        return self
 
 
-class CreateSessionResponse(BaseModel):
+class LaunchMetadata(BaseModel):
+    harness: str | None = None
+    auth_mode: str | None = None
+    capture_profile: str | None = None
+    capabilities: list[str] = Field(default_factory=list)
+
+
+class CreateSessionResponse(LaunchMetadata):
     session_id: str
     pid: int
     selected_model: str | None = None
 
 
-class SessionStatusResponse(BaseModel):
+class SessionStatusResponse(LaunchMetadata):
     session_id: str
     pid: int
     alive: bool
@@ -97,6 +117,7 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     settings.validate()
     manager = manager or TerminalManager()
     indexes: dict[str, ContextIndex] = {}
+    launches: dict[str, dict] = {}
     skills = SkillCount(settings.workspace)
     trace_search_lock = asyncio.Lock()
     session_lifecycle_lock = asyncio.Lock()
@@ -114,6 +135,10 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     def session_model(session_id: str) -> str:
         return selected_model(manager.get(session_id)) or settings.model
 
+    def codex_windows(session_id: str) -> dict:
+        return session_catalog(settings.state_dir / "sessions" / session_id,
+                               CLAUDE_HOME / ".codex" / "models_cache.json")
+
     def context_index(session_id: str) -> ContextIndex:
         if manager.get(session_id) is None:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -121,7 +146,7 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
             indexes[session_id] = ContextIndex(ContextEventStream(
                 settings.state_dir / "sessions" / session_id / "events.jsonl", session_id,
                 settings.context_window_tokens, settings.context_window_source,
-                fallback_model=session_model(session_id),
+                fallback_model=session_model(session_id), codex_catalog=codex_windows(session_id),
             ))
         return indexes[session_id]
 
@@ -136,6 +161,11 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     app.state.settings = settings
     app.state.terminals = manager
     app.state.skills = skills
+
+    @app.get("/api/profiles")
+    async def profiles(response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        return catalog(settings.command_override is not None)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -164,7 +194,8 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     async def claude_files(response: Response, action: str, path: str, after: str = "", limit: int = 100):
         response.headers["Cache-Control"] = "no-store"
         try:
-            return await asyncio.to_thread(inspect_workspace, CLAUDE_HOME / ".claude", action, path, after, limit)
+            return await asyncio.to_thread(inspect_workspace, CLAUDE_HOME / ".claude", action, path, after, limit,
+                                           forbidden_names={".credentials.json"})
         except HTTPException as exc:
             exc.headers = {"Cache-Control": "no-store"}
             raise
@@ -219,13 +250,36 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
     async def start_session(request: CreateSessionRequest) -> CreateSessionResponse:
         active = manager.active()
         if active is not None:
-            return CreateSessionResponse(session_id=active.id, pid=active.pid, selected_model=selected_model(active))
+            metadata = launches.get(active.id, {})
+            # Legacy callers retain attach behavior. Explicit profile selections
+            # must never silently attach to a different harness/auth/model.
+            if request.harness is not None or request.auth_mode is not None:
+                if (metadata.get("harness"), metadata.get("auth_mode")) != (request.harness or "claude", request.auth_mode or "vertex") or (request.model is not None and request.model != selected_model(active)):
+                    raise HTTPException(409, detail={"message": "A different session is active. Reconnect or stop it before changing the launch profile.",
+                                                    "session_id": active.id, "selected_model": selected_model(active), **metadata})
+            return CreateSessionResponse(session_id=active.id, pid=active.pid, selected_model=selected_model(active), **metadata)
+        profile = get_profile(request.harness or "claude", request.auth_mode or "vertex")
+        if not profile.available:
+            raise HTTPException(409, detail=profile.unavailable_reason)
+        if settings.command_override is not None and (request.harness is not None or request.auth_mode is not None):
+            raise HTTPException(400, "Profile selection is unavailable with a command override")
+        if (request.harness is not None or request.auth_mode is not None) and request.extra_args:
+            raise HTTPException(400, "extra_args are unavailable with explicit profile selection")
         if any("\x00" in argument for argument in request.extra_args):
             raise HTTPException(status_code=400, detail="Arguments may not contain NUL bytes")
         try:
-            argv = settings.claude_command(tuple(request.extra_args), model=request.model)
+            if request.model is not None and request.model not in profile.models:
+                raise ValueError("Select an available model for this profile")
+            launch_model = request.model or (profile.models[0] if profile.auth_mode == "oauth" else settings.model)
+            argv = settings.session_command(profile.harness, profile.auth_mode, tuple(request.extra_args),
+                                            model=launch_model if profile.auth_mode == "oauth" else request.model)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if profile.auth_mode == "oauth":
+            try:
+                await asyncio.to_thread(native_launch, profile.harness)
+            except CredentialError as exc:
+                raise HTTPException(409, detail=str(exc)) from None
         if settings.command_override is None:
             # Keep ownership until the destructive worker finishes, even if the
             # request is cancelled. A later Start must never race that worker.
@@ -249,15 +303,25 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         environment["CONTEXT_INSPECTOR_SESSION_ID"] = session_id
         environment["CONTEXT_INSPECTOR_EVENT_FILE"] = str(event_file)
         environment["CONTEXT_INSPECTOR_STATE_DIR"] = str(settings.state_dir)
+        metadata = {} if settings.command_override is not None else {
+            "harness": profile.harness, "auth_mode": profile.auth_mode,
+            "capture_profile": profile.capture_profile, "capabilities": list(profile.capabilities),
+        }
+        environment["CONTEXT_INSPECTOR_HARNESS"] = profile.harness
+        environment["CONTEXT_INSPECTOR_AUTH_MODE"] = profile.auth_mode
+        with (event_dir / "launch.json").open("x", encoding="utf-8") as record:
+            os.chmod(record.name, 0o600)
+            json.dump({**metadata, "selected_model": launch_model if metadata else None}, record)
         session = manager.create(argv, cwd=settings.workspace, env=environment, session_id=session_id)
-        return CreateSessionResponse(session_id=session.id, pid=session.pid, selected_model=selected_model(session))
+        launches[session.id] = metadata
+        return CreateSessionResponse(session_id=session.id, pid=session.pid, selected_model=selected_model(session), **metadata)
 
     @app.get("/api/sessions/active", response_model=SessionStatusResponse | None)
     async def active_session() -> SessionStatusResponse | None:
         session = manager.active()
         if session is None:
             return None
-        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=True, selected_model=selected_model(session))
+        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=True, selected_model=selected_model(session), **launches.get(session.id, {}))
 
     @app.delete("/api/sessions/{session_id}")
     async def stop_session(session_id: str) -> dict[str, bool]:
@@ -278,7 +342,7 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         session = manager.get(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=session.alive, selected_model=selected_model(session))
+        return SessionStatusResponse(session_id=session.id, pid=session.pid, alive=session.alive, selected_model=selected_model(session), **launches.get(session.id, {}))
 
     @app.websocket("/api/sessions/{session_id}/terminal")
     async def terminal_socket(websocket: WebSocket, session_id: str) -> None:
@@ -399,7 +463,7 @@ def create_app(*, settings: Settings | None = None, manager: TerminalManager | N
         stream = ContextEventStream(
             settings.state_dir / "sessions" / session_id / "events.jsonl", session_id,
             settings.context_window_tokens, settings.context_window_source,
-            fallback_model=session_model(session_id),
+            fallback_model=session_model(session_id), codex_catalog=codex_windows(session_id),
         )
         try:
             async for event in stream.events(after_sequence):

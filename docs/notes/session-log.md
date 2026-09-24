@@ -1,5 +1,34 @@
 # Session Log
 
+## 2026-09-23 — OAuth/Codex compatibility update
+
+- Task 082 moved to current after the user supplied secret-free CLI status:
+  Claude Code 2.1.280 reports Claude Max login; Codex reports ChatGPT login.
+  No account identifiers or token values were recorded.
+- Reviewed the tagged Codex 0.156.0 auth manager and file storage source. It
+  documents process-local refresh coordination and truncate/write auth-file
+  persistence; cross-process host/container safety remains unproven. This is a
+  gate, not a claim that all credential backends are unsafe.
+- Tagged provider source also confirms the built-in ChatGPT-auth provider's
+  default base URL and Responses-WebSocket capability. The host's effective
+  provider config can override that URL, so this sets a constrained probe target
+  without proving the actual traffic path. At the start of the change, the addon
+  had no WebSocket capture path.
+- Confirmed the addon originally selected only Anthropic/Vertex HTTP model POSTs.
+  Added a strict default ChatGPT Responses path matcher, post-upgrade v1.1
+  logical-message events, synthetic tests and per-connection UI evidence sections.
+  No handshake headers are persisted; unrelated paths and queries are rejected.
+  This is raw capture only: actual traffic, call correlation, context
+  interpretation and usage are absent.
+- Validation: 28 focused Python unit tests passed, the frontend TypeScript/Vite
+  build passed, and `git diff --check` passed. Tests use synthetic messages only;
+  no Codex login, model request, container, or running stack was used.
+- A follow-up run of context-diff/window/flow-stream tests could not import the
+  test modules because FastAPI is absent from the system Python. No dependency
+  installation was attempted.
+- No credentials were read, copied, or mounted; no login, model request,
+  container, or stack operation was performed.
+
 ## 2026-09-15 — Clear strace on Start Claude
 
 - Task 079: added trace-only reset before new real API sessions. Shared-session
@@ -1016,3 +1045,230 @@ Next:
 - Both decoded SSE and compressed replay use the same resolver; observed token
   counts are unchanged. ADR-0033 records catalog provenance and limitations.
 - No stack restart or live session mutation. Validation recorded in task 070.
+
+## 2026-09-23 — OAuth and Codex enhancement planning (task 080)
+
+- Inspected runtime, backend, capture/protocol, context interpretation, UI and
+  tests; wrote docs/plans/phase-04-oauth-and-codex.md and proposed ADR-0039.
+- User requires existing Linux host CLI logins, concurrent host use and Codex
+  capture/inspection at launch. Refresh coordination and observed transport are
+  explicit feasibility gates; no unsupported auth-sharing solution asserted.
+- Read official authentication/config/network/Responses documentation; checked
+  local Codex 0.156.0 help. File metadata confirms credential candidates exist
+  with mode 0600, but contents, effective store, validity and models remain unknown.
+- Recorded credential-files-browser-exposure and oauth-exchange-body-capture
+  defects, reproduced using temporary synthetic fixtures only. Secret-file
+  exclusion and model-only capture are prerequisites to OAuth reuse.
+- No application edits, real credential reads, live captures, model calls, login,
+  container launches or restarts. Checked document links and git diff whitespace.
+- Completed planning task; enhancement implementation remains future work indexed
+  in PLAN.md. Existing untracked checkouts/ and demo-script.md left untouched.
+
+## 2026-09-23 — Phase 04 implementation (task 081)
+
+- Backend Claude file browsing now excludes `.credentials.json` in directory
+  listings and denies direct reads with a non-disclosing 404. Existing generic
+  workspace browsing behavior is unchanged.
+- Proxy capture now admits only POST requests matching the existing Anthropic
+  message/token-count operations or Vertex model predict/token-count paths.
+  OAuth endpoints, unknown paths/methods, user-info URLs and credential-like
+  query keys are rejected before request metadata/body copying.
+- Added synthetic regression coverage; moved both confirmed defects from open to
+  fixed. Six proxy tests pass, source compile checks and `git diff --check` pass.
+  An isolated synthetic browser-reader check also passes.
+- Full pytest/browser suite unavailable: Python environments have no pytest;
+  `uv run pytest` reports project Python >=3.11 conflicts with mitmproxy >=12
+  requiring Python >=3.12. Did not alter project dependencies for this task.
+- OAuth launch and Codex remain unavailable. Existing host auth-method/refresh
+  semantics and Codex transport have not been safely verified. Task 082 tracks
+  that work with concurrent-host requirements intact.
+- No credential contents read, model calls, login, container start or restart.
+
+## 2026-09-23 — Codex Responses parser prototype (task 082)
+
+- Added a standalone parser for client `response.create` and server
+  `response.completed` messages. Request completeness is explicitly limited to
+  fields in that captured message; previous-response references are preserved
+  without reconstructing hidden server context.
+- Extracted input/output/total usage and cached/reasoning subsets without
+  double-counting; invalid or missing counts remain unknown. Codex context
+  window remains unknown rather than using the Claude fallback.
+- Three synthetic unit tests, module compilation and `git diff --check` pass
+  using the project `.venv`. System Python lacks FastAPI, so its initial test
+  import failed; no dependency was installed.
+- Parser remains standalone: no live Codex traffic, stream correlation, context
+  diff, UI usage display or OAuth behavior was validated. No credentials were
+  read or used, and no session/container was launched or restarted.
+
+## 2026-09-23 — Integrated Codex inspection and corrected auth assumptions (082)
+
+- Added backend-owned profiles and launch metadata, gated OAuth selections,
+  frontend catalog/reconnect support, per-call Codex context/usage interpretation,
+  incremental WebSocket archives and explicit close/error events. Inferred lane
+  pairing is medium confidence; captured previous-response references alone
+  establish predecessor links. No server context reconstruction or guessed limits.
+- Fixed response provenance that incorrectly described Codex as Claude HTTP/SSE.
+  Profile-selection and Codex inspection/reload browser fixtures pass; frontend
+  build passes. Full unit run: 203 tests, five skipped, passing outside sandbox.
+- Added an opt-in synthetic native Codex refresh diagnostic. Native 0.156.0
+  host/host and host/container shared-file runs each made one refresh in the
+  sequential scenario, and duplicated the old token when deliberately overlapped.
+  The rejection policy belongs to the local stub, not a verified provider policy.
+- Corrected overly broad concurrent-login advice after the user's question.
+  Shared live credentials can be reloaded; this differs from independent copies.
+  No evidence establishes that the user's ordinary host sessions are broken.
+- Verified installed native getAuthStatus can export a synthetic access token.
+  Existing host-daemon attachment and external-token callbacks remain research;
+  no broker is enabled. Host login reuse remains the requirement. No live tokens
+  were read or used, real model calls made, or real stack restarted.
+
+## 2026-09-23 — Native external-token handoff probe (082)
+
+- Installed Claude 2.1.280 bundled code uses a `.storage-write` directory lock
+  around credential mutation, a separate native OAuth refresh lock, and a writer
+  that stages/renames with in-place fallback for selected errors. Sharing only
+  the credentials file does not establish shared lock or replacement semantics.
+  This is source evidence from the installed binary, not a concurrent native test.
+- Extended the synthetic Codex diagnostic with `--external-auth`. Native 0.156.0
+  exported a synthetic access token through getAuthStatus and accepted it through
+  account/login/start chatgptAuthTokens in a second isolated app server. The second
+  server reported ChatGPT auth, created no auth.json, left the first auth file
+  unchanged, and made zero refresh requests. No token-bearing result was printed.
+  This does not yet validate daemon attachment, refresh callbacks, container TUI
+  execution or model traffic. Both OAuth launch profiles remain unavailable.
+
+## 2026-09-23 — Native callback across container boundary (082)
+
+- Synthetic native socket test passed: one existing native manager, two clients,
+  concurrent refreshes using distinct tokens. External-token server received a
+  fake model HTTP 401, requested a replacement token and completed the retry.
+  Repeated successfully in an isolated container with no credential-file mount.
+  Native app-server control socket uses WebSocket framing; the initial line-JSON
+  proxy attempt timed out and was replaced with the source-verified transport.
+- Host default daemon socket is absent; user runs codex normally. No host daemon
+  started or credentials accessed. Workflow choice between ordinary shared-file
+  handling and requiring a shared host server is pending; neither is silently
+  selected. Both launch profiles remain gated.
+- Fixed completed output-item reconstruction with conservative conflict handling;
+  15 focused tests pass. Only synthetic model requests were made.
+
+- Full regression: 205 tests run, five skipped, all remaining tests pass; diff whitespace check passes. Task 082 moved to blocked while the host workflow choice is pending. No real stack restart.
+
+## 2026-09-23 — Resume normal CLI runtime (082)
+
+User chose normal setup with CLI invocation inside the proxy-configured container
+and native shared-file credential handling. No app-server requirement. Task 082
+moved back to current; previous workflow question is resolved.
+
+## 2026-09-23 — Native OAuth runtime and real proxy validation (082)
+
+- Approved normal CLI runtime and Claude shared credential-directory scope are
+  implemented. Host credentials remain native shared state; inspector config and
+  histories remain separate. Binary versions are pinned at Claude 2.1.280 and
+  Codex 0.156.0. No host app server or separate login is required.
+- Synthetic Claude auth-store/config separation passed on host and in an isolated
+  no-network container. Runtime tests validate mounts, provider exclusions, CA,
+  auth-file replacement detection and archive preservation after CLI failure.
+- Live Codex tool round trip completed over WebSocket. Captured native control
+  events reproduced a pairing defect, now fixed; replay yields three completed
+  responses and observed usage (10395, 11781, 11901 input tokens). Source-verified
+  provider override was rejected by this binary; now use unmodified built-in
+  provider selection. Private evidence: /tmp/ci-live-oauth-jid6ws3i.
+- Live Claude Haiku tool round trip completed through proxy: two requests, two
+  responses, usage 10166 and 12650. Private evidence: /tmp/ci-live-oauth-d0kafiae.
+  First Claude probe had its prompt consumed by the variadic --tools option;
+  corrected with an argument separator. No real stack startup or restart.
+- Added HTTP fallback capture/interpreter, including compression, block gaps,
+  exact HTTP correlation and no Claude normalization of Responses tools.
+- Full suite before final profile integration: 214 tests, five skipped, remaining
+  tests pass; build passes. Subsequent focused API/runtime/context checks pass.
+  Final profile/capability browser validation is still in progress.
+
+
+## 2026-09-23 — Phase 04 completion
+
+Task 082 moved to done; ADR-0039 accepted. User selected normal native CLI sharing
+and approved the separate host Claude credential-directory mount. Both OAuth
+profiles enabled after live proxy validation. Final Codex probe
+/tmp/ci-live-oauth-x2hts0vt: 81 logical messages, three completed tool-turn
+responses/diffs/usage records. Final Claude probe /tmp/ci-live-oauth-ra685dwu:
+two HTTP requests, tool_use/end_turn, two responses/diffs/usage records. Captures
+stay private/untracked. Host login status still passes. Inspector pins Claude
+2.1.280 even though host default now reports 2.1.281; no cause asserted for update.
+No forced live token refresh or live browser TUI validation was performed.
+
+Final regression: 218 tests run, five skipped, all remaining pass. Frontend build,
+three browser fixtures, shell syntax and whitespace checks pass. Temporary static
+server stopped; final escalated podman ps empty. Main stack never restarted.
+README/PLAN document user-managed startup, file-store limits, model-cache provenance
+and native concurrency semantics. No further input is needed for implementation.
+
+## 2026-09-23 — Terminal harness title
+
+Task 083 fixes a hard-coded Claude CLI heading for Codex sessions. Heading and
+accessible terminal label now follow connectSession metadata on launch/reconnect;
+initial label is neutral. No architectural change. Production build and mocked
+OAuth lifecycle checks with rendered-label assertions pass for both harnesses.
+Temporary static server stopped; user session untouched. Browser refresh needed.
+
+## 2026-09-23 — Codex context-limit investigation
+
+Task 084 complete. Host/inspector catalogs agree on 272000 default and 95 percent
+effective capacity; most models advertise 872000 maximum separately. Two native
+inspector gpt-6-luna sessions report model_context_window 258400. No top-level
+window/compaction overrides found in inspector config. Only allowlisted metadata
+printed; no credentials or prompt contents exposed. Recorded provenance, limits
+and future meter requirements in codex-context-limits.md. No running session
+changed, no model calls, no implementation change or architectural decision.
+
+## 2026-09-23 — Codex context meter
+
+Task 085 and ADR-0040: use exact request model with native catalog effective
+budget; freeze a private session snapshot at first inspection. Limits are
+explicitly catalog-derived, not wire observed; runtime overrides may differ.
+HTTP and WebSocket share resolver; unknown/malformed metadata remains unknown.
+221 tests run, five skipped, others pass; mocked browser numeric meter/reload
+passes. No live session changes or restart; backend restart required.
+
+## 2026-09-23 — Missing Codex execution helper
+
+Task 086: native package includes codex-code-mode-host, omitted from original
+runtime mount. Added read-only companion mount, host preflight and non-root
+container startup check. Eight runtime tests and isolated --help execution pass;
+no live model call or clone performed. Earlier noninteractive tool probe did not
+cover this execution mode. User session untouched; new container required.
+
+## 2026-09-23 — Container-installed latest harnesses
+
+Task 087 and ADR-0041 replace executable mounts/version pins with full latest
+package installs in a cached derived image. Claude 2.1.281 and Codex 0.156.1 built;
+base image's older Claude PATH shadow fixed. Both real isolated OAuth tool turns
+pass through mitmproxy (private /tmp/ci-live-oauth-99a6501u and
+/tmp/ci-live-oauth-l5bw700c), with context/response/usage. 225 regression tests,
+five skipped, others pass; shell syntax/whitespace checks pass. Host credentials
+remain native mounts; main stack untouched. README describes explicit --refresh
+and backend restart/new session activation. No live Vertex call or interactive
+clone claimed. Complete package includes code-mode helper.
+
+## 2026-09-23 — Model picker investigation
+
+Task 088: live profiles API and fresh served dialog list GPT-6 Sol/Luna. Read-only
+browser probe selected both with confirmation enabled; did not submit a launch.
+User-browser cause not reproduced; advised reopen/refresh/scroll. No source changes
+or active-session interruption.
+
+## 2026-09-23 — Model discrepancy remains unresolved
+
+Reopened task 088 after user reproduced missing Sol/Luna in a different browser.
+Localhost API still includes both. Requested user origin/port and exact labels;
+previous suggestion of stale browser state is not supported by this new evidence.
+
+## 2026-09-23 — Model picker root cause and correction
+
+Reproduced missing choices at testbox:8765. Host cache refreshed during checks,
+dropping Sol/Luna; subsequent localhost/LAN requests agreed. Inspector cache still
+contains both. Fixed wrong-runtime catalog selection with inspector precedence,
+host fallback only when inspector cache absent. No model entitlements inferred.
+Fourteen affected tests pass; updated backend returns both from inspector catalog.
+Task 088 complete, ADR-0042 recorded. Backend restart required; no live-session
+changes. Earlier stale-browser suggestion was unsupported.
